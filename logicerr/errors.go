@@ -1,4 +1,4 @@
-package go_common
+package logicerr
 
 import "fmt"
 

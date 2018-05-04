@@ -1,4 +1,4 @@
-package go_common
+package log
 
 import "cloud.google.com/go/logging"
 
