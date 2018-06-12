@@ -23,6 +23,7 @@ func StandardHeadersHandler(next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("Content-Type", fmt.Sprintf("%s; charset=utf-8", "application/json"))
 		next.ServeHTTP(w, r)
 	}
