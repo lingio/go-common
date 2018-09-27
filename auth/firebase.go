@@ -15,7 +15,13 @@ type FireBase struct {
 }
 
 func NewFireBase(ctx context.Context, config *firebase.Config, opts option.ClientOption) (*FireBase, error) {
-	fireBaseApp, err := firebase.NewApp(context.Background(), config, opts)
+	var fireBaseApp *firebase.App
+	var err error
+	if opts == nil {
+		fireBaseApp, err = firebase.NewApp(context.Background(), config)
+	} else {
+		fireBaseApp, err = firebase.NewApp(context.Background(), config, opts)
+	}
 	if err != nil {
 		return nil, err
 	}
