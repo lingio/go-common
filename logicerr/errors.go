@@ -15,15 +15,15 @@ func (e *Error) Error() string {
 }
 
 func NewInternalError(msg string) *Error {
-	return &Error{Message: msg, HttpStatusCode: 500}
+	return &Error{Message: msg, HttpStatusCode: http.StatusInternalServerError}
 }
 
 func NewNotFoundError(typeName string, key string) *Error {
-	return &Error{Message: fmt.Sprintf("%s %s not found", typeName, key), HttpStatusCode: 404}
+	return &Error{Message: fmt.Sprintf("%s %s not found", typeName, key), HttpStatusCode: http.StatusNotFound}
 }
 
 func NewBadGatewayError(url string) *Error {
-	return &Error{Message: fmt.Sprintf("Failed call to %s", url), HttpStatusCode: 502}
+	return &Error{Message: fmt.Sprintf("Failed call to %s", url), HttpStatusCode: http.StatusBadGateway}
 }
 
 func NewBadRequestError(msg string) *Error {
