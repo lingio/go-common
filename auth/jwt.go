@@ -26,7 +26,7 @@ func NewJwtTokenVerify(verifyKey *rsa.PublicKey) JwtTokenVerifier {
 // If everything is okay, err will be nil
 // Example:
 // verifier := NewJwtTokenVerify(publicKey)
-// data, err := auth.VerifyToken("tokenString")
+// data, err := verifier.VerifyToken("tokenString")
 // if err != nil {
 // 		fmt.Errorf("failed with err: %v",err)
 // }
