@@ -9,6 +9,11 @@ import (
 
 type JwtTokenVerifier interface {
 	VerifyToken(token string) (map[string]interface{}, error)
+	GetPrincipalWithToken(tokenString string, principal AuthenticatePrincipal) (AuthenticatePrincipal, error)
+}
+
+type AuthenticatePrincipal interface {
+	MapData(map[string]interface{}) error
 }
 
 type JwtTokenVerify struct {
@@ -17,6 +22,18 @@ type JwtTokenVerify struct {
 
 var _ JwtTokenVerifier = &JwtTokenVerify{}
 
+// Create new struct JwtTokenVerifier
+// keyFunc will receive the public key and return struct as JwtTokenVerifier.
+// Example:
+// key, err := ioutil.ReadFile("lingio-rsa256")
+// if err != nil {
+// 		os.Exit(1)
+// }
+// publicKey, err := jwt.ParseRSAPublicKeyFromPEM(pkey)
+// if err != nil {
+// 		os.Exit(1)
+// }
+// verifier := NewJwtTokenVerify(publicKey)
 func NewJwtTokenVerify(verifyKey *rsa.PublicKey) JwtTokenVerifier {
 	return &JwtTokenVerify{verifyKey: verifyKey}
 }
@@ -48,4 +65,26 @@ func (j *JwtTokenVerify) VerifyToken(tokenString string) (map[string]interface{}
 		return claims, nil
 	}
 	return nil, errors.New("token claims invalid")
+}
+
+// Parse, validate  a token, then use claims for map it into principal struct.
+// keyFunc will receive the token string, principal interface and return mapped principal data as AuthenticatePrincipal.
+// If everything is okay, err will be nil
+// Example:
+// verifier := NewJwtTokenVerify(publicKey)
+// principal := models.AuthenticatePrincipal{}
+// mappedPrincipal, err := verifier.GetPrincipalWithToken("tokenString",principal)
+// if err != nil {
+// 		fmt.Errorf("failed with err: %v",err)
+// }
+// partnerID := mappedPrincipal.PartnerID
+func (j *JwtTokenVerify) GetPrincipalWithToken(tokenString string, principal AuthenticatePrincipal) (AuthenticatePrincipal, error) {
+	claims, err := j.VerifyToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+	if err := principal.MapData(claims); err != nil {
+		return nil, err
+	}
+	return principal, nil
 }
