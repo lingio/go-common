@@ -8,12 +8,12 @@ import (
 )
 
 type TokenVerifier interface {
-	VerifyToken(token string) (map[string]interface{}, error)
-	GetPrincipalWithToken(tokenString string, principal AuthenticatePrincipal) (AuthenticatePrincipal, error)
+	VerifyToken(token string) (*jwt.MapClaims, error)
+	GetPrincipalWithToken(claims *jwt.MapClaims, principal AuthenticatePrincipal) (AuthenticatePrincipal, error)
 }
 
 type AuthenticatePrincipal interface {
-	MapData(map[string]interface{}) error
+	MapData(*jwt.MapClaims) error
 }
 
 type RsaTokenVerifier struct {
@@ -39,7 +39,7 @@ func NewTokenVerify(verifyKey *rsa.PublicKey) TokenVerifier {
 }
 
 // Parse, validate  a token.
-// keyFunc will receive the token string and return claims data as map[string]interface{}.
+// keyFunc will receive the token string and return claims data as *jwt.MapClaims.
 // If everything is okay, err will be nil
 // Example:
 // verifier := NewTokenVerify(publicKey)
@@ -47,8 +47,7 @@ func NewTokenVerify(verifyKey *rsa.PublicKey) TokenVerifier {
 // if err != nil {
 // 		fmt.Errorf("failed with err: %v",err)
 // }
-// partnerID := data["partnerId"]
-func (j *RsaTokenVerifier) VerifyToken(tokenString string) (map[string]interface{}, error) {
+func (j *RsaTokenVerifier) VerifyToken(tokenString string) (*jwt.MapClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -62,27 +61,24 @@ func (j *RsaTokenVerifier) VerifyToken(tokenString string) (map[string]interface
 		if err := claims.Valid(); err != nil {
 			return nil, err
 		}
-		return claims, nil
+		return &claims, nil
 	}
 	return nil, errors.New("token claims invalid")
 }
 
-// Parse, validate  a token, then use claims for map it into principal struct.
-// keyFunc will receive the token string, principal interface and return mapped principal data as AuthenticatePrincipal.
+// Use map claims for map it into principal struct.
+// keyFunc will receive the map claims, principal interface and return mapped principal data as AuthenticatePrincipal.
 // If everything is okay, err will be nil
 // Example:
 // verifier := NewTokenVerify(publicKey)
 // principal := models.AuthenticatePrincipal{}
-// mappedPrincipal, err := verifier.GetPrincipalWithToken("tokenString",principal)
+// mapClaims, err := verifier.VerifyToken("tokenString")
+// mappedPrincipal, err := verifier.GetPrincipalWithToken(mapClaims,principal)
 // if err != nil {
 // 		fmt.Errorf("failed with err: %v",err)
 // }
 // partnerID := mappedPrincipal.PartnerID
-func (j *RsaTokenVerifier) GetPrincipalWithToken(tokenString string, principal AuthenticatePrincipal) (AuthenticatePrincipal, error) {
-	claims, err := j.VerifyToken(tokenString)
-	if err != nil {
-		return nil, err
-	}
+func (j *RsaTokenVerifier) GetPrincipalWithToken(claims *jwt.MapClaims, principal AuthenticatePrincipal) (AuthenticatePrincipal, error) {
 	if err := principal.MapData(claims); err != nil {
 		return nil, err
 	}
