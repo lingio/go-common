@@ -33,8 +33,8 @@ var _ TokenVerifier = &RsaTokenVerifier{}
 // if err != nil {
 // 		os.Exit(1)
 // }
-// verifier := NewTokenVerify(publicKey)
-func NewTokenVerify(verifyKey *rsa.PublicKey) TokenVerifier {
+// verifier := NewRsaTokenVerify(publicKey)
+func NewRsaTokenVerify(verifyKey *rsa.PublicKey) TokenVerifier {
 	return &RsaTokenVerifier{verifyKey: verifyKey}
 }
 
@@ -42,7 +42,7 @@ func NewTokenVerify(verifyKey *rsa.PublicKey) TokenVerifier {
 // keyFunc will receive the token string and return claims data as *jwt.MapClaims.
 // If everything is okay, err will be nil
 // Example:
-// verifier := NewTokenVerify(publicKey)
+// verifier := NewRsaTokenVerify(publicKey)
 // data, err := verifier.VerifyToken("tokenString")
 // if err != nil {
 // 		fmt.Errorf("failed with err: %v",err)
@@ -70,7 +70,7 @@ func (j *RsaTokenVerifier) VerifyToken(tokenString string) (*jwt.MapClaims, erro
 // keyFunc will receive the map claims, principal interface and return mapped principal data as AuthenticatePrincipal.
 // If everything is okay, err will be nil
 // Example:
-// verifier := NewTokenVerify(publicKey)
+// verifier := NewRsaTokenVerify(publicKey)
 // principal := models.AuthenticatePrincipal{}
 // mapClaims, err := verifier.VerifyToken("tokenString")
 // mappedPrincipal, err := verifier.GetPrincipalWithToken(mapClaims,principal)
