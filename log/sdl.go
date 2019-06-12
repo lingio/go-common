@@ -9,99 +9,203 @@ import (
 	googlelog "cloud.google.com/go/logging"
 )
 
-type lingioSDL struct {
-	sdl    *googlelog.Logger
-	m      map[string]string
-	stdl   *golog.Logger
-	client *googlelog.Client
+// LingioLogger represents a logger used to log events
+type LingioLogger struct {
+	env         string
+	projectID   string
+	serviceName string
+
+	loggers map[googlelog.Severity]*golog.Logger
+
+	sdlogger *googlelog.Logger
+	client   *googlelog.Client
 }
 
-func NewLingioSDL(projectID string, serviceName string, params map[string]string) *lingioSDL {
+// NewLingioLogger creates a new LingioLogger that can be used for logging
+func NewLingioLogger(env string, projectID string, serviceName string) *LingioLogger {
+	logger := LingioLogger{}
+	logger.env = env
+	logger.projectID = projectID
+	logger.serviceName = serviceName
 
-	// Set up Google Cloud Stackdriver logger
-	ctx := context.Background()
-	client, err := googlelog.NewClient(ctx, projectID)
-	if err != nil {
-		fmt.Printf("Failed to initialize logger: %s", err)
-		os.Exit(1)
+	logger.loggers = make(map[googlelog.Severity]*golog.Logger)
+
+	switch env {
+	case "local":
+		// Create stdout loggers
+		logger.loggers[googlelog.Error] = golog.New(os.Stderr, "Error: ", golog.Lshortfile)
+		logger.loggers[googlelog.Warning] = golog.New(os.Stderr, "Warning: ", golog.Lshortfile)
+		logger.loggers[googlelog.Info] = golog.New(os.Stderr, "Info: ", golog.Lshortfile)
+		logger.loggers[googlelog.Debug] = golog.New(os.Stderr, "Debug: ", golog.Lshortfile)
+	default:
+		// Create goolge stackdriver loggers
+		ctx := context.Background()
+		client, err := googlelog.NewClient(ctx, projectID)
+		if err != nil {
+			fmt.Printf("Failed to initialize logger: %s", err)
+			os.Exit(1)
+		}
+		sdl := client.Logger(serviceName)
+
+		logger.sdlogger = sdl
+		logger.client = client
+
+		logger.loggers[googlelog.Error] = sdl.StandardLogger(googlelog.Error)
+		logger.loggers[googlelog.Warning] = sdl.StandardLogger(googlelog.Warning)
+		logger.loggers[googlelog.Info] = sdl.StandardLogger(googlelog.Info)
+		logger.loggers[googlelog.Debug] = sdl.StandardLogger(googlelog.Debug)
 	}
-	sdl := client.Logger(serviceName)
 
-	stdl := sdl.StandardLogger(googlelog.Info)
-
-	// Create Lingio Logger that wraps Stackdriver logger
-	return &lingioSDL{sdl: sdl, m: params, stdl: stdl, client: client}
+	return &logger
 }
 
-func (ll *lingioSDL) Debug(msg string) {
-	ll.log(msg, googlelog.Debug)
+// Debug logs a debug message
+func (ll *LingioLogger) Debug(message string) {
+	ll.logm(message, googlelog.Debug, make(map[string]string))
 }
 
-func (ll *lingioSDL) Debug1(msg string, k1 string, v1 string) {
-	ll.m[k1] = v1
-	ll.log(msg, googlelog.Debug)
+// DebugUser logs a debug message
+func (ll *LingioLogger) DebugUser(message string, partnerID string, userID string) {
+	ll.logm(message, googlelog.Debug, makeUserMap(partnerID, userID))
 }
 
-func (ll *lingioSDL) DebugParams(msg string, m map[string]string) {
-	for k, v := range m {
-		ll.m[k] = v
+// Debug1 logs a debug message
+func (ll *LingioLogger) Debug1(message string, key string, value string) {
+	ll.logm(message, googlelog.Debug, map[string]string{key: value})
+}
+
+// Debug2 logs a debug message
+func (ll *LingioLogger) Debug2(message string, key1 string, value1 string, key2 string, value2 string) {
+	ll.logm(message, googlelog.Debug, map[string]string{key1: value1, key2: value2})
+}
+
+// DebugM logs a debug message
+func (ll *LingioLogger) DebugM(message string, m map[string]string) {
+	ll.logm(message, googlelog.Debug, m)
+}
+
+// Info logs an info message
+func (ll *LingioLogger) Info(message string) {
+	ll.logm(message, googlelog.Info, make(map[string]string))
+}
+
+// InfoUser logs an info message
+func (ll *LingioLogger) InfoUser(message string, partnerID string, userID string) {
+	ll.logm(message, googlelog.Info, makeUserMap(partnerID, userID))
+}
+
+// Info1 logs an info message
+func (ll *LingioLogger) Info1(message string, key string, value string) {
+	ll.logm(message, googlelog.Info, map[string]string{key: value})
+}
+
+// Info2 logs an info message
+func (ll *LingioLogger) Info2(message string, key1 string, value1 string, key2 string, value2 string) {
+	ll.logm(message, googlelog.Info, map[string]string{key1: value1, key2: value2})
+}
+
+// InfoM logs an info message
+func (ll *LingioLogger) InfoM(message string, m map[string]string) {
+	ll.logm(message, googlelog.Info, m)
+}
+
+// Warning logs a warning message
+func (ll *LingioLogger) Warning(message string) {
+	ll.logm(message, googlelog.Warning, make(map[string]string))
+}
+
+// WarningUser logs a warning message
+func (ll *LingioLogger) WarningUser(message string, partnerID string, userID string) {
+	ll.logm(message, googlelog.Warning, makeUserMap(partnerID, userID))
+}
+
+// Warning1 logs a warning message
+func (ll *LingioLogger) Warning1(message string, key string, value string) {
+	ll.logm(message, googlelog.Warning, map[string]string{key: value})
+}
+
+// Warning2 logs a warning message
+func (ll *LingioLogger) Warning2(message string, key1 string, value1 string, key2 string, value2 string) {
+	ll.logm(message, googlelog.Warning, map[string]string{key1: value1, key2: value2})
+}
+
+// WarningM logs a warning message
+func (ll *LingioLogger) WarningM(message string, m map[string]string) {
+	ll.logm(message, googlelog.Warning, m)
+}
+
+// Error logs an error message
+func (ll *LingioLogger) Error(message string) {
+	ll.logm(message, googlelog.Error, make(map[string]string))
+}
+
+// ErrorUser logs an error message
+func (ll *LingioLogger) ErrorUser(message string, partnerID string, userID string) {
+	ll.logm(message, googlelog.Error, makeUserMap(partnerID, userID))
+}
+
+// Error1 logs an error message
+func (ll *LingioLogger) Error1(message string, key string, value string) {
+	ll.logm(message, googlelog.Error, map[string]string{key: value})
+}
+
+// Error2 logs an error message
+func (ll *LingioLogger) Error2(message string, key1 string, value1 string, key2 string, value2 string) {
+	ll.logm(message, googlelog.Error, map[string]string{key1: value1, key2: value2})
+}
+
+// ErrorM logs an error message
+func (ll *LingioLogger) ErrorM(message string, m map[string]string) {
+	ll.logm(message, googlelog.Error, m)
+}
+
+func makeUserMap(partnerID string, userID string) map[string]string {
+	m := make(map[string]string)
+	m["partnerID"] = partnerID
+	m["userID"] = userID
+	return m
+}
+
+func (ll *LingioLogger) logm(message string, severity googlelog.Severity, m map[string]string) {
+	if m == nil {
+		m = make(map[string]string)
 	}
-	ll.log(msg, googlelog.Debug)
-}
 
+	m["env"] = ll.env
+	m["projectID"] = ll.projectID
+	m["message"] = message
 
-func (ll *lingioSDL) Info(msg string) {
-	ll.log(msg, googlelog.Info)
-}
+	if ll.sdlogger != nil {
+		// Here we use the stackdriver logger
 
-func (ll *lingioSDL) Info1(msg string, k1 string, v1 string) {
-	ll.m[k1] = v1
-	ll.log(msg, googlelog.Info)
-}
+		ll.sdlogger.Log(googlelog.Entry{Payload: m, Severity: severity})
 
-func (ll *lingioSDL) InfoParams(msg string, m map[string]string) {
-	for k, v := range m {
-		ll.m[k] = v
+	} else {
+		// Here we use the local logger
+		logger, ok := ll.loggers[severity]
+		if ok == false {
+			fmt.Printf("Cannot log with this severity!! %v", severity)
+			return
+		}
+
+		// We send 3 as the stackdepth here to that we get the right filename in the output
+		logger.Output(3, fmt.Sprintf("%v \n %v", message, m))
 	}
-	ll.log(msg, googlelog.Info)
 }
 
-
-func (ll *lingioSDL) Warn(msg string) {
-	ll.log(msg, googlelog.Warning)
-}
-
-func (ll *lingioSDL) Warn1(msg string, k1 string, v1 string) {
-	ll.m[k1] = v1
-	ll.log(msg, googlelog.Warning)
-}
-
-func (ll *lingioSDL) WarnParams(msg string, m map[string]string) {
-	for k, v := range m {
-		ll.m[k] = v
+// Flush flushes the stackdriver logger
+func (ll *LingioLogger) Flush() {
+	if ll.client != nil {
+		ll.sdlogger.Flush()
 	}
-	ll.log(msg, googlelog.Warning)
 }
 
-
-func (ll *lingioSDL) Err(msg string, e error) {
-	ll.m["message"] = msg
-	ll.m["error"] = e.Error()
-	ll.sdl.Log(googlelog.Entry{Payload: ll.m, Severity: googlelog.Error})
-}
-
-
-func (ll *lingioSDL) log(msg string, severity googlelog.Severity) {
-	ll.m["message"] = msg
-	ll.sdl.Log(googlelog.Entry{Payload: ll.m, Severity: severity})
-}
-
-func (ll *lingioSDL) StandardLogger() *golog.Logger {
-	return ll.stdl
-}
-
-func (ll *lingioSDL) Shutdown() {
-	if err := ll.client.Close(); err != nil {
-		fmt.Printf("Failed to close client: %v", err)
+// Shutdown shuts down this loggers potential connection to stackdriver
+func (ll *LingioLogger) Shutdown() {
+	if ll.client != nil {
+		if err := ll.client.Close(); err != nil {
+			// TODO: We might want to send some signal to the google cloud server that this happened
+			fmt.Printf("Failed to close client: %v", err)
+		}
 	}
 }
