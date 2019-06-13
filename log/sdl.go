@@ -6,6 +6,8 @@ import (
 	golog "log"
 	"os"
 
+	"github.com/lingio/go-common/logicerr"
+
 	googlelog "cloud.google.com/go/logging"
 )
 
@@ -69,6 +71,19 @@ func (ll *LingioLogger) DebugUser(message string, partnerID string, userID strin
 	ll.logm(message, googlelog.Debug, makeUserMap(partnerID, userID))
 }
 
+// DebugUser1 logs a debug message
+func (ll *LingioLogger) DebugUser1(message string, partnerID string, userID string, key string, value string) {
+	m := makeUserMap(partnerID, userID)
+	m[key] = value
+	ll.logm(message, googlelog.Debug, m)
+}
+
+// DebugUserM logs a debug message
+func (ll *LingioLogger) DebugUserM(message string, partnerID string, userID string, m map[string]string) {
+	m = makeUserMapFromExsisting(partnerID, userID, m)
+	ll.logm(message, googlelog.Debug, m)
+}
+
 // Debug1 logs a debug message
 func (ll *LingioLogger) Debug1(message string, key string, value string) {
 	ll.logm(message, googlelog.Debug, map[string]string{key: value})
@@ -92,6 +107,19 @@ func (ll *LingioLogger) Info(message string) {
 // InfoUser logs an info message
 func (ll *LingioLogger) InfoUser(message string, partnerID string, userID string) {
 	ll.logm(message, googlelog.Info, makeUserMap(partnerID, userID))
+}
+
+// InfoUser1 logs an info message
+func (ll *LingioLogger) InfoUser1(message string, partnerID string, userID string, key string, value string) {
+	m := makeUserMap(partnerID, userID)
+	m[key] = value
+	ll.logm(message, googlelog.Info, m)
+}
+
+// InfoUserM logs an info message
+func (ll *LingioLogger) InfoUserM(message string, partnerID string, userID string, m map[string]string) {
+	m = makeUserMapFromExsisting(partnerID, userID, m)
+	ll.logm(message, googlelog.Info, m)
 }
 
 // Info1 logs an info message
@@ -119,6 +147,19 @@ func (ll *LingioLogger) WarningUser(message string, partnerID string, userID str
 	ll.logm(message, googlelog.Warning, makeUserMap(partnerID, userID))
 }
 
+// WarningUser1 logs a warning message
+func (ll *LingioLogger) WarningUser1(message string, partnerID string, userID string, key string, value string) {
+	m := makeUserMap(partnerID, userID)
+	m[key] = value
+	ll.logm(message, googlelog.Warning, m)
+}
+
+// WarningUserM logs a warning message
+func (ll *LingioLogger) WarningUserM(message string, partnerID string, userID string, m map[string]string) {
+	m = makeUserMapFromExsisting(partnerID, userID, m)
+	ll.logm(message, googlelog.Warning, m)
+}
+
 // Warning1 logs a warning message
 func (ll *LingioLogger) Warning1(message string, key string, value string) {
 	ll.logm(message, googlelog.Warning, map[string]string{key: value})
@@ -139,9 +180,41 @@ func (ll *LingioLogger) Error(message string) {
 	ll.logm(message, googlelog.Error, make(map[string]string))
 }
 
+// ErrorE logs a logicerr.Error error
+func (ll *LingioLogger) ErrorE(e *logicerr.Error) {
+	m := e.InfoMap
+	if m == nil {
+		m = make(map[string]string)
+	}
+	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
+	m["trace"] = e.Trace
+	ll.logm(e.Message, googlelog.Error, m)
+}
+
 // ErrorUser logs an error message
 func (ll *LingioLogger) ErrorUser(message string, partnerID string, userID string) {
 	ll.logm(message, googlelog.Error, makeUserMap(partnerID, userID))
+}
+
+// ErrorUserE logs a logicerr.Error error
+func (ll *LingioLogger) ErrorUserE(e *logicerr.Error, partnerID string, userID string) {
+	m := makeUserMapFromExsisting(partnerID, userID, e.InfoMap)
+	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
+	m["trace"] = e.Trace
+	ll.logm(e.Message, googlelog.Error, m)
+}
+
+// ErrorUser1 logs an error message
+func (ll *LingioLogger) ErrorUser1(message string, partnerID string, userID string, key string, value string) {
+	m := makeUserMap(partnerID, userID)
+	m[key] = value
+	ll.logm(message, googlelog.Error, m)
+}
+
+// ErrorUserM logs an error message
+func (ll *LingioLogger) ErrorUserM(message string, partnerID string, userID string, m map[string]string) {
+	m = makeUserMapFromExsisting(partnerID, userID, m)
+	ll.logm(message, googlelog.Error, m)
 }
 
 // Error1 logs an error message
@@ -161,6 +234,15 @@ func (ll *LingioLogger) ErrorM(message string, m map[string]string) {
 
 func makeUserMap(partnerID string, userID string) map[string]string {
 	m := make(map[string]string)
+	m["partnerID"] = partnerID
+	m["userID"] = userID
+	return m
+}
+
+func makeUserMapFromExsisting(partnerID string, userID string, m map[string]string) map[string]string {
+	if m == nil {
+		m = make(map[string]string)
+	}
 	m["partnerID"] = partnerID
 	m["userID"] = userID
 	return m
@@ -189,14 +271,17 @@ func (ll *LingioLogger) logm(message string, severity googlelog.Severity, m map[
 		}
 
 		// We send 3 as the stackdepth here to that we get the right filename in the output
-		logger.Output(3, fmt.Sprintf("%v \n %v", message, m))
+		_ = logger.Output(3, fmt.Sprintf("%v \n %v", message, m))
 	}
 }
 
 // Flush flushes the stackdriver logger
 func (ll *LingioLogger) Flush() {
 	if ll.client != nil {
-		ll.sdlogger.Flush()
+		err := ll.sdlogger.Flush()
+		if err != nil {
+			fmt.Printf("Failed flushing the stackdriver logger: %v", err)
+		}
 	}
 }
 
