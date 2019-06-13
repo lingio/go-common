@@ -71,27 +71,10 @@ func (ll *LingioLogger) DebugUser(message string, partnerID string, userID strin
 	ll.logm(message, googlelog.Debug, makeUserMap(partnerID, userID))
 }
 
-// DebugUser1 logs a debug message
-func (ll *LingioLogger) DebugUser1(message string, partnerID string, userID string, key string, value string) {
-	m := makeUserMap(partnerID, userID)
-	m[key] = value
-	ll.logm(message, googlelog.Debug, m)
-}
-
 // DebugUserM logs a debug message
 func (ll *LingioLogger) DebugUserM(message string, partnerID string, userID string, m map[string]string) {
 	m = makeUserMapFromExsisting(partnerID, userID, m)
 	ll.logm(message, googlelog.Debug, m)
-}
-
-// Debug1 logs a debug message
-func (ll *LingioLogger) Debug1(message string, key string, value string) {
-	ll.logm(message, googlelog.Debug, map[string]string{key: value})
-}
-
-// Debug2 logs a debug message
-func (ll *LingioLogger) Debug2(message string, key1 string, value1 string, key2 string, value2 string) {
-	ll.logm(message, googlelog.Debug, map[string]string{key1: value1, key2: value2})
 }
 
 // DebugM logs a debug message
@@ -109,27 +92,10 @@ func (ll *LingioLogger) InfoUser(message string, partnerID string, userID string
 	ll.logm(message, googlelog.Info, makeUserMap(partnerID, userID))
 }
 
-// InfoUser1 logs an info message
-func (ll *LingioLogger) InfoUser1(message string, partnerID string, userID string, key string, value string) {
-	m := makeUserMap(partnerID, userID)
-	m[key] = value
-	ll.logm(message, googlelog.Info, m)
-}
-
 // InfoUserM logs an info message
 func (ll *LingioLogger) InfoUserM(message string, partnerID string, userID string, m map[string]string) {
 	m = makeUserMapFromExsisting(partnerID, userID, m)
 	ll.logm(message, googlelog.Info, m)
-}
-
-// Info1 logs an info message
-func (ll *LingioLogger) Info1(message string, key string, value string) {
-	ll.logm(message, googlelog.Info, map[string]string{key: value})
-}
-
-// Info2 logs an info message
-func (ll *LingioLogger) Info2(message string, key1 string, value1 string, key2 string, value2 string) {
-	ll.logm(message, googlelog.Info, map[string]string{key1: value1, key2: value2})
 }
 
 // InfoM logs an info message
@@ -147,27 +113,10 @@ func (ll *LingioLogger) WarningUser(message string, partnerID string, userID str
 	ll.logm(message, googlelog.Warning, makeUserMap(partnerID, userID))
 }
 
-// WarningUser1 logs a warning message
-func (ll *LingioLogger) WarningUser1(message string, partnerID string, userID string, key string, value string) {
-	m := makeUserMap(partnerID, userID)
-	m[key] = value
-	ll.logm(message, googlelog.Warning, m)
-}
-
 // WarningUserM logs a warning message
 func (ll *LingioLogger) WarningUserM(message string, partnerID string, userID string, m map[string]string) {
 	m = makeUserMapFromExsisting(partnerID, userID, m)
 	ll.logm(message, googlelog.Warning, m)
-}
-
-// Warning1 logs a warning message
-func (ll *LingioLogger) Warning1(message string, key string, value string) {
-	ll.logm(message, googlelog.Warning, map[string]string{key: value})
-}
-
-// Warning2 logs a warning message
-func (ll *LingioLogger) Warning2(message string, key1 string, value1 string, key2 string, value2 string) {
-	ll.logm(message, googlelog.Warning, map[string]string{key1: value1, key2: value2})
 }
 
 // WarningM logs a warning message
@@ -204,27 +153,10 @@ func (ll *LingioLogger) ErrorUserE(e *logicerr.Error, partnerID string, userID s
 	ll.logm(e.Message, googlelog.Error, m)
 }
 
-// ErrorUser1 logs an error message
-func (ll *LingioLogger) ErrorUser1(message string, partnerID string, userID string, key string, value string) {
-	m := makeUserMap(partnerID, userID)
-	m[key] = value
-	ll.logm(message, googlelog.Error, m)
-}
-
 // ErrorUserM logs an error message
 func (ll *LingioLogger) ErrorUserM(message string, partnerID string, userID string, m map[string]string) {
 	m = makeUserMapFromExsisting(partnerID, userID, m)
 	ll.logm(message, googlelog.Error, m)
-}
-
-// Error1 logs an error message
-func (ll *LingioLogger) Error1(message string, key string, value string) {
-	ll.logm(message, googlelog.Error, map[string]string{key: value})
-}
-
-// Error2 logs an error message
-func (ll *LingioLogger) Error2(message string, key1 string, value1 string, key2 string, value2 string) {
-	ll.logm(message, googlelog.Error, map[string]string{key1: value1, key2: value2})
 }
 
 // ErrorM logs an error message

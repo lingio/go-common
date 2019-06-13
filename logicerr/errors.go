@@ -25,6 +25,7 @@ func NewInternalError(msg string) *Error {
 		Message:        msg,
 		HTTPStatusCode: http.StatusInternalServerError,
 		Trace:          getErrorTrace(),
+		InfoMap         map[string]string{},
 	}
 }
 
@@ -109,11 +110,12 @@ func NewBadGatewayError(url string) *Error {
 }
 
 // NewBadRequestError returns a new Error with the StatusBadRequest http error code
-func NewBadRequestError(msg string) *Error {
+func NewBadRequestError(msg string, err error) *Error {
 	return &Error{
 		Message:        msg,
 		HTTPStatusCode: http.StatusBadRequest,
 		Trace:          getErrorTrace(),
+		InfoMap:        map[string]string{"error":fmt.Sprintf("%v", err)},
 	}
 }
 

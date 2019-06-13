@@ -32,28 +32,10 @@ func Test_create(t *testing.T) {
 	ll.ErrorUser("Error that broke it all", partnerID, userID)
 	fmt.Println()
 
-	ll.Debug1("Woah", "key", "value")
-	ll.Info1("Hello", "key", "value")
-	ll.Warning1("Scary warning", "key", "value")
-	ll.Error1("Error that broke it all", "key", "value")
-	fmt.Println()
-
-	ll.Debug2("Woah", "key1", "value1", "key2", "value2")
-	ll.Info2("Hello", "key1", "value1", "key2", "value2")
-	ll.Warning2("Scary warning", "key1", "value1", "key2", "value2")
-	ll.Error2("Error that broke it all", "key1", "value1", "key2", "value2")
-	fmt.Println()
-
 	ll.DebugM("Woah", vmap)
 	ll.InfoM("Hello", vmap)
 	ll.WarningM("Scary warning", vmap)
 	ll.ErrorM("Error that broke it all", vmap)
-	fmt.Println()
-
-	ll.DebugUser1("Woah", partnerID, userID, "key", "value")
-	ll.InfoUser1("Hello", partnerID, userID, "key", "value")
-	ll.WarningUser1("Scary warning", partnerID, userID, "key", "value")
-	ll.ErrorUser1("Error that broke it all", partnerID, userID, "key", "value")
 	fmt.Println()
 
 	ll.DebugUserM("Woah", partnerID, userID, vmap)
