@@ -108,9 +108,28 @@ func (ll *LingioLogger) Warning(message string) {
 	ll.logm(message, googlelog.Warning, make(map[string]string))
 }
 
+// WarningE logs a warning message
+func (ll *LingioLogger) WarningE(err *logicerr.Error) {
+	m := e.InfoMap
+	if m == nil {
+		m = make(map[string]string)
+	}
+	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
+	m["trace"] = e.Trace
+	ll.logm(e.Message, googlelog.Warning, m)
+}
+
 // WarningUser logs a warning message
 func (ll *LingioLogger) WarningUser(message string, partnerID string, userID string) {
 	ll.logm(message, googlelog.Warning, makeUserMap(partnerID, userID))
+}
+
+// WarningUserE logs a warning message
+func (ll *LingioLogger) WarningUserE(message string, partnerID string, userID string) {
+	m := makeUserMapFromExsisting(partnerID, userID, e.InfoMap)
+	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
+	m["trace"] = e.Trace
+	ll.logm(e.Message, googlelog.Warning, m)
 }
 
 // WarningUserM logs a warning message
