@@ -5,12 +5,10 @@ import (
 	"testing"
 
 	"github.com/lingio/go-common/logicerr"
-
-	"github.com/lingio/go-common/log"
 )
 
 func Test_create(t *testing.T) {
-	ll := log.NewLingioLogger("local", "test", "test")
+	ll := NewLingioLogger("local", "test", "test")
 	partnerID := "project34523452456"
 	userID := "user12341234"
 
