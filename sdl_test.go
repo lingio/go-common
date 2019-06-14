@@ -18,7 +18,7 @@ func Test_create(t *testing.T) {
 
 	//errmap := map[string]string{"errorkey": "errorvalue"}
 	//err := logicerr.Error{Message: "This is the evil error!", HttpStatusCode: 5000, InfoMap: errmap}
-	err := logicerr.NewInternalError("This is the evil error!")
+	err := logicerr.NewInternalError("This is the evil error!", nil)
 
 	ll.Debug("Woah")
 	ll.Info("Hello")

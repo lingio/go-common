@@ -110,13 +110,13 @@ func (ll *LingioLogger) Warning(message string) {
 
 // WarningE logs a warning message
 func (ll *LingioLogger) WarningE(err *logicerr.Error) {
-	m := e.InfoMap
+	m := err.InfoMap
 	if m == nil {
 		m = make(map[string]string)
 	}
-	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
-	m["trace"] = e.Trace
-	ll.logm(e.Message, googlelog.Warning, m)
+	m["error_code"] = fmt.Sprintf("%v", err.HTTPStatusCode)
+	m["trace"] = err.Trace
+	ll.logm(err.Message, googlelog.Warning, m)
 }
 
 // WarningUser logs a warning message
@@ -125,11 +125,11 @@ func (ll *LingioLogger) WarningUser(message string, partnerID string, userID str
 }
 
 // WarningUserE logs a warning message
-func (ll *LingioLogger) WarningUserE(message string, partnerID string, userID string) {
-	m := makeUserMapFromExsisting(partnerID, userID, e.InfoMap)
-	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
-	m["trace"] = e.Trace
-	ll.logm(e.Message, googlelog.Warning, m)
+func (ll *LingioLogger) WarningUserE(err *logicerr.Error, partnerID string, userID string) {
+	m := makeUserMapFromExsisting(partnerID, userID, err.InfoMap)
+	m["error_code"] = fmt.Sprintf("%v", err.HTTPStatusCode)
+	m["trace"] = err.Trace
+	ll.logm(err.Message, googlelog.Warning, m)
 }
 
 // WarningUserM logs a warning message
