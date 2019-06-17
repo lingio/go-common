@@ -42,11 +42,10 @@ func Test_create(t *testing.T) {
 	ll.ErrorUserM("Error that broke it all", partnerID, userID, vmap)
 	fmt.Println()
 
-	ll.ErrorUserE(err, partnerID, userID)
-	ll.ErrorE(err)
+	ll.ErrorMessageE("Custom error message!", err)
+	ll.WarningMessageE("Custom warning message!", err)
 	fmt.Println()
 
 	ll.Flush()
 	ll.Shutdown()
-
 }

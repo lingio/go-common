@@ -119,6 +119,18 @@ func (ll *LingioLogger) WarningE(err *logicerr.Error) {
 	ll.logm(err.Message, googlelog.Warning, m)
 }
 
+// WarningMessageE logs a logicerr.Error warning with a custom message
+func (ll *LingioLogger) WarningMessageE(message string, e *logicerr.Error) {
+	m := e.InfoMap
+	if m == nil {
+		m = make(map[string]string)
+	}
+	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
+	m["trace"] = e.Trace
+	m["error_message"] = e.Message
+	ll.logm(message, googlelog.Warning, m)
+}
+
 // WarningUser logs a warning message
 func (ll *LingioLogger) WarningUser(message string, partnerID string, userID string) {
 	ll.logm(message, googlelog.Warning, makeUserMap(partnerID, userID))
@@ -157,6 +169,18 @@ func (ll *LingioLogger) ErrorE(e *logicerr.Error) {
 	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
 	m["trace"] = e.Trace
 	ll.logm(e.Message, googlelog.Error, m)
+}
+
+// ErrorMessageE logs a logicerr.Error error with a custom message
+func (ll *LingioLogger) ErrorMessageE(message string, e *logicerr.Error) {
+	m := e.InfoMap
+	if m == nil {
+		m = make(map[string]string)
+	}
+	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
+	m["trace"] = e.Trace
+	m["error_message"] = e.Message
+	ll.logm(message, googlelog.Error, m)
 }
 
 // ErrorUser logs an error message
