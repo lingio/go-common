@@ -6,6 +6,8 @@ import (
 	golog "log"
 	"os"
 
+	"github.com/lingio/go-common/logicerr"
+
 	googlelog "cloud.google.com/go/logging"
 )
 
@@ -69,14 +71,10 @@ func (ll *LingioLogger) DebugUser(message string, partnerID string, userID strin
 	ll.logm(message, googlelog.Debug, makeUserMap(partnerID, userID))
 }
 
-// Debug1 logs a debug message
-func (ll *LingioLogger) Debug1(message string, key string, value string) {
-	ll.logm(message, googlelog.Debug, map[string]string{key: value})
-}
-
-// Debug2 logs a debug message
-func (ll *LingioLogger) Debug2(message string, key1 string, value1 string, key2 string, value2 string) {
-	ll.logm(message, googlelog.Debug, map[string]string{key1: value1, key2: value2})
+// DebugUserM logs a debug message
+func (ll *LingioLogger) DebugUserM(message string, partnerID string, userID string, m map[string]string) {
+	m = makeUserMapFromExsisting(partnerID, userID, m)
+	ll.logm(message, googlelog.Debug, m)
 }
 
 // DebugM logs a debug message
@@ -94,14 +92,10 @@ func (ll *LingioLogger) InfoUser(message string, partnerID string, userID string
 	ll.logm(message, googlelog.Info, makeUserMap(partnerID, userID))
 }
 
-// Info1 logs an info message
-func (ll *LingioLogger) Info1(message string, key string, value string) {
-	ll.logm(message, googlelog.Info, map[string]string{key: value})
-}
-
-// Info2 logs an info message
-func (ll *LingioLogger) Info2(message string, key1 string, value1 string, key2 string, value2 string) {
-	ll.logm(message, googlelog.Info, map[string]string{key1: value1, key2: value2})
+// InfoUserM logs an info message
+func (ll *LingioLogger) InfoUserM(message string, partnerID string, userID string, m map[string]string) {
+	m = makeUserMapFromExsisting(partnerID, userID, m)
+	ll.logm(message, googlelog.Info, m)
 }
 
 // InfoM logs an info message
@@ -114,19 +108,34 @@ func (ll *LingioLogger) Warning(message string) {
 	ll.logm(message, googlelog.Warning, make(map[string]string))
 }
 
+// WarningE logs a warning message
+func (ll *LingioLogger) WarningE(err *logicerr.Error) {
+	m := err.InfoMap
+	if m == nil {
+		m = make(map[string]string)
+	}
+	m["error_code"] = fmt.Sprintf("%v", err.HTTPStatusCode)
+	m["trace"] = err.Trace
+	ll.logm(err.Message, googlelog.Warning, m)
+}
+
 // WarningUser logs a warning message
 func (ll *LingioLogger) WarningUser(message string, partnerID string, userID string) {
 	ll.logm(message, googlelog.Warning, makeUserMap(partnerID, userID))
 }
 
-// Warning1 logs a warning message
-func (ll *LingioLogger) Warning1(message string, key string, value string) {
-	ll.logm(message, googlelog.Warning, map[string]string{key: value})
+// WarningUserE logs a warning message
+func (ll *LingioLogger) WarningUserE(err *logicerr.Error, partnerID string, userID string) {
+	m := makeUserMapFromExsisting(partnerID, userID, err.InfoMap)
+	m["error_code"] = fmt.Sprintf("%v", err.HTTPStatusCode)
+	m["trace"] = err.Trace
+	ll.logm(err.Message, googlelog.Warning, m)
 }
 
-// Warning2 logs a warning message
-func (ll *LingioLogger) Warning2(message string, key1 string, value1 string, key2 string, value2 string) {
-	ll.logm(message, googlelog.Warning, map[string]string{key1: value1, key2: value2})
+// WarningUserM logs a warning message
+func (ll *LingioLogger) WarningUserM(message string, partnerID string, userID string, m map[string]string) {
+	m = makeUserMapFromExsisting(partnerID, userID, m)
+	ll.logm(message, googlelog.Warning, m)
 }
 
 // WarningM logs a warning message
@@ -139,19 +148,34 @@ func (ll *LingioLogger) Error(message string) {
 	ll.logm(message, googlelog.Error, make(map[string]string))
 }
 
+// ErrorE logs a logicerr.Error error
+func (ll *LingioLogger) ErrorE(e *logicerr.Error) {
+	m := e.InfoMap
+	if m == nil {
+		m = make(map[string]string)
+	}
+	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
+	m["trace"] = e.Trace
+	ll.logm(e.Message, googlelog.Error, m)
+}
+
 // ErrorUser logs an error message
 func (ll *LingioLogger) ErrorUser(message string, partnerID string, userID string) {
 	ll.logm(message, googlelog.Error, makeUserMap(partnerID, userID))
 }
 
-// Error1 logs an error message
-func (ll *LingioLogger) Error1(message string, key string, value string) {
-	ll.logm(message, googlelog.Error, map[string]string{key: value})
+// ErrorUserE logs a logicerr.Error error
+func (ll *LingioLogger) ErrorUserE(e *logicerr.Error, partnerID string, userID string) {
+	m := makeUserMapFromExsisting(partnerID, userID, e.InfoMap)
+	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
+	m["trace"] = e.Trace
+	ll.logm(e.Message, googlelog.Error, m)
 }
 
-// Error2 logs an error message
-func (ll *LingioLogger) Error2(message string, key1 string, value1 string, key2 string, value2 string) {
-	ll.logm(message, googlelog.Error, map[string]string{key1: value1, key2: value2})
+// ErrorUserM logs an error message
+func (ll *LingioLogger) ErrorUserM(message string, partnerID string, userID string, m map[string]string) {
+	m = makeUserMapFromExsisting(partnerID, userID, m)
+	ll.logm(message, googlelog.Error, m)
 }
 
 // ErrorM logs an error message
@@ -161,6 +185,15 @@ func (ll *LingioLogger) ErrorM(message string, m map[string]string) {
 
 func makeUserMap(partnerID string, userID string) map[string]string {
 	m := make(map[string]string)
+	m["partnerID"] = partnerID
+	m["userID"] = userID
+	return m
+}
+
+func makeUserMapFromExsisting(partnerID string, userID string, m map[string]string) map[string]string {
+	if m == nil {
+		m = make(map[string]string)
+	}
 	m["partnerID"] = partnerID
 	m["userID"] = userID
 	return m
@@ -189,14 +222,17 @@ func (ll *LingioLogger) logm(message string, severity googlelog.Severity, m map[
 		}
 
 		// We send 3 as the stackdepth here to that we get the right filename in the output
-		logger.Output(3, fmt.Sprintf("%v \n %v", message, m))
+		_ = logger.Output(3, fmt.Sprintf("%v \n %v", message, m))
 	}
 }
 
 // Flush flushes the stackdriver logger
 func (ll *LingioLogger) Flush() {
 	if ll.client != nil {
-		ll.sdlogger.Flush()
+		err := ll.sdlogger.Flush()
+		if err != nil {
+			fmt.Printf("Failed flushing the stackdriver logger: %v", err)
+		}
 	}
 }
 
