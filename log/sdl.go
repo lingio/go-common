@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	golog "log"
+	"math/rand"
+	"net/http"
 	"os"
 
 	"github.com/lingio/go-common/logicerr"
@@ -47,7 +49,22 @@ func NewLingioLogger(env string, projectID string, serviceName string) *LingioLo
 			fmt.Printf("Failed to initialize logger: %s", err)
 			os.Exit(1)
 		}
-		sdl := client.Logger(serviceName)
+		if err := client.Ping(ctx); err != nil {
+			fmt.Printf("Failed to connect to logger: %s", err)
+			os.Exit(1)
+		}
+
+		m := make(map[string]string)
+		m["env"] = logger.env
+		m["projectID"] = logger.projectID
+		hostname, err := os.Hostname()
+		if err != nil {
+			fmt.Printf("Error when trying to get hostname: %v", err.Error())
+			hostname = fmt.Sprintf("got-no-hostname-%x", rand.Uint64())
+		}
+		m["machine"] = fmt.Sprintf("go-%v@%s", os.Getpid(), hostname)
+
+		sdl := client.Logger(serviceName, googlelog.CommonLabels(m))
 
 		logger.sdlogger = sdl
 		logger.client = client
@@ -63,49 +80,49 @@ func NewLingioLogger(env string, projectID string, serviceName string) *LingioLo
 
 // Debug logs a debug message
 func (ll *LingioLogger) Debug(message string) {
-	ll.logm(message, googlelog.Debug, make(map[string]string))
+	ll.logm(message, googlelog.Debug, make(map[string]string), nil)
 }
 
 // DebugUser logs a debug message
-func (ll *LingioLogger) DebugUser(message string, partnerID string, userID string) {
-	ll.logm(message, googlelog.Debug, makeUserMap(partnerID, userID))
+func (ll *LingioLogger) DebugUser(message string, partnerID string, userID string, request *http.Request) {
+	ll.logm(message, googlelog.Debug, makeUserMap(partnerID, userID), request)
 }
 
 // DebugUserM logs a debug message
-func (ll *LingioLogger) DebugUserM(message string, partnerID string, userID string, m map[string]string) {
+func (ll *LingioLogger) DebugUserM(message string, partnerID string, userID string, request *http.Request, m map[string]string) {
 	m = makeUserMapFromExsisting(partnerID, userID, m)
-	ll.logm(message, googlelog.Debug, m)
+	ll.logm(message, googlelog.Debug, m, request)
 }
 
 // DebugM logs a debug message
 func (ll *LingioLogger) DebugM(message string, m map[string]string) {
-	ll.logm(message, googlelog.Debug, m)
+	ll.logm(message, googlelog.Debug, m, nil)
 }
 
 // Info logs an info message
 func (ll *LingioLogger) Info(message string) {
-	ll.logm(message, googlelog.Info, make(map[string]string))
+	ll.logm(message, googlelog.Info, make(map[string]string), nil)
 }
 
 // InfoUser logs an info message
-func (ll *LingioLogger) InfoUser(message string, partnerID string, userID string) {
-	ll.logm(message, googlelog.Info, makeUserMap(partnerID, userID))
+func (ll *LingioLogger) InfoUser(message string, partnerID string, userID string, request *http.Request) {
+	ll.logm(message, googlelog.Info, makeUserMap(partnerID, userID), request)
 }
 
 // InfoUserM logs an info message
-func (ll *LingioLogger) InfoUserM(message string, partnerID string, userID string, m map[string]string) {
+func (ll *LingioLogger) InfoUserM(message string, partnerID string, userID string, request *http.Request, m map[string]string) {
 	m = makeUserMapFromExsisting(partnerID, userID, m)
-	ll.logm(message, googlelog.Info, m)
+	ll.logm(message, googlelog.Info, m, request)
 }
 
 // InfoM logs an info message
 func (ll *LingioLogger) InfoM(message string, m map[string]string) {
-	ll.logm(message, googlelog.Info, m)
+	ll.logm(message, googlelog.Info, m, nil)
 }
 
 // Warning logs a warning message
 func (ll *LingioLogger) Warning(message string) {
-	ll.logm(message, googlelog.Warning, make(map[string]string))
+	ll.logm(message, googlelog.Warning, make(map[string]string), nil)
 }
 
 // WarningE logs a warning message
@@ -116,7 +133,7 @@ func (ll *LingioLogger) WarningE(err *logicerr.Error) {
 	}
 	m["error_code"] = fmt.Sprintf("%v", err.HTTPStatusCode)
 	m["trace"] = err.Trace
-	ll.logm(err.Message, googlelog.Warning, m)
+	ll.logm(err.Message, googlelog.Warning, m, nil)
 }
 
 // WarningMessageE logs a logicerr.Error warning with a custom message
@@ -128,36 +145,36 @@ func (ll *LingioLogger) WarningMessageE(message string, e *logicerr.Error) {
 	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
 	m["trace"] = e.Trace
 	m["error_message"] = e.Message
-	ll.logm(message, googlelog.Warning, m)
+	ll.logm(message, googlelog.Warning, m, nil)
 }
 
 // WarningUser logs a warning message
-func (ll *LingioLogger) WarningUser(message string, partnerID string, userID string) {
-	ll.logm(message, googlelog.Warning, makeUserMap(partnerID, userID))
+func (ll *LingioLogger) WarningUser(message string, partnerID string, userID string, request *http.Request) {
+	ll.logm(message, googlelog.Warning, makeUserMap(partnerID, userID), request)
 }
 
 // WarningUserE logs a warning message
-func (ll *LingioLogger) WarningUserE(err *logicerr.Error, partnerID string, userID string) {
+func (ll *LingioLogger) WarningUserE(err *logicerr.Error, partnerID string, userID string, request *http.Request) {
 	m := makeUserMapFromExsisting(partnerID, userID, err.InfoMap)
 	m["error_code"] = fmt.Sprintf("%v", err.HTTPStatusCode)
 	m["trace"] = err.Trace
-	ll.logm(err.Message, googlelog.Warning, m)
+	ll.logm(err.Message, googlelog.Warning, m, request)
 }
 
 // WarningUserM logs a warning message
-func (ll *LingioLogger) WarningUserM(message string, partnerID string, userID string, m map[string]string) {
+func (ll *LingioLogger) WarningUserM(message string, partnerID string, userID string, request *http.Request, m map[string]string) {
 	m = makeUserMapFromExsisting(partnerID, userID, m)
-	ll.logm(message, googlelog.Warning, m)
+	ll.logm(message, googlelog.Warning, m, request)
 }
 
 // WarningM logs a warning message
 func (ll *LingioLogger) WarningM(message string, m map[string]string) {
-	ll.logm(message, googlelog.Warning, m)
+	ll.logm(message, googlelog.Warning, m, nil)
 }
 
 // Error logs an error message
 func (ll *LingioLogger) Error(message string) {
-	ll.logm(message, googlelog.Error, make(map[string]string))
+	ll.logm(message, googlelog.Error, make(map[string]string), nil)
 }
 
 // ErrorE logs a logicerr.Error error
@@ -168,7 +185,7 @@ func (ll *LingioLogger) ErrorE(e *logicerr.Error) {
 	}
 	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
 	m["trace"] = e.Trace
-	ll.logm(e.Message, googlelog.Error, m)
+	ll.logm(e.Message, googlelog.Error, m, nil)
 }
 
 // ErrorMessageE logs a logicerr.Error error with a custom message
@@ -180,31 +197,31 @@ func (ll *LingioLogger) ErrorMessageE(message string, e *logicerr.Error) {
 	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
 	m["trace"] = e.Trace
 	m["error_message"] = e.Message
-	ll.logm(message, googlelog.Error, m)
+	ll.logm(message, googlelog.Error, m, nil)
 }
 
 // ErrorUser logs an error message
-func (ll *LingioLogger) ErrorUser(message string, partnerID string, userID string) {
-	ll.logm(message, googlelog.Error, makeUserMap(partnerID, userID))
+func (ll *LingioLogger) ErrorUser(message string, partnerID string, userID string, request *http.Request) {
+	ll.logm(message, googlelog.Error, makeUserMap(partnerID, userID), request)
 }
 
 // ErrorUserE logs a logicerr.Error error
-func (ll *LingioLogger) ErrorUserE(e *logicerr.Error, partnerID string, userID string) {
+func (ll *LingioLogger) ErrorUserE(e *logicerr.Error, partnerID string, userID string, request *http.Request) {
 	m := makeUserMapFromExsisting(partnerID, userID, e.InfoMap)
 	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
 	m["trace"] = e.Trace
-	ll.logm(e.Message, googlelog.Error, m)
+	ll.logm(e.Message, googlelog.Error, m, request)
 }
 
 // ErrorUserM logs an error message
-func (ll *LingioLogger) ErrorUserM(message string, partnerID string, userID string, m map[string]string) {
+func (ll *LingioLogger) ErrorUserM(message string, partnerID string, userID string, request *http.Request, m map[string]string) {
 	m = makeUserMapFromExsisting(partnerID, userID, m)
-	ll.logm(message, googlelog.Error, m)
+	ll.logm(message, googlelog.Error, m, request)
 }
 
 // ErrorM logs an error message
 func (ll *LingioLogger) ErrorM(message string, m map[string]string) {
-	ll.logm(message, googlelog.Error, m)
+	ll.logm(message, googlelog.Error, m, nil)
 }
 
 func makeUserMap(partnerID string, userID string) map[string]string {
@@ -223,7 +240,16 @@ func makeUserMapFromExsisting(partnerID string, userID string, m map[string]stri
 	return m
 }
 
-func (ll *LingioLogger) logm(message string, severity googlelog.Severity, m map[string]string) {
+// FIXMe: We should try to set the other fields like
+func makeGoogleLogHTTPRequest(request *http.Request) googlelog.HTTPRequest {
+	return googlelog.HTTPRequest{Request: request, Status: 200}
+}
+
+func makeGoogleLogErrorHTTPRequest(err logicerr.Error, request *http.Request) googlelog.HTTPRequest {
+	return googlelog.HTTPRequest{Request: request, Status: err.HTTPStatusCode}
+}
+
+func (ll *LingioLogger) logm(message string, severity googlelog.Severity, m map[string]string, request *googlelog.HTTPRequest) {
 	if m == nil {
 		m = make(map[string]string)
 	}
@@ -235,8 +261,7 @@ func (ll *LingioLogger) logm(message string, severity googlelog.Severity, m map[
 	if ll.sdlogger != nil {
 		// Here we use the stackdriver logger
 
-		ll.sdlogger.Log(googlelog.Entry{Payload: m, Severity: severity})
-
+		ll.sdlogger.Log(googlelog.Entry{Payload: m, Severity: severity, HTTPRequest: request})
 	} else {
 		// Here we use the local logger
 		logger, ok := ll.loggers[severity]
