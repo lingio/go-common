@@ -240,7 +240,7 @@ func makeUserMapFromExsisting(partnerID string, userID string, m map[string]stri
 	return m
 }
 
-// FIXMe: We should try to set the other fields like
+// FIXMe: We should try to set the other fields like Latency and SpanID
 func makeGoogleLogHTTPRequest(request *http.Request) googlelog.HTTPRequest {
 	return googlelog.HTTPRequest{Request: request, Status: 200}
 }
@@ -261,6 +261,11 @@ func (ll *LingioLogger) logm(message string, severity googlelog.Severity, m map[
 	if ll.sdlogger != nil {
 		// Here we use the stackdriver logger
 
+		// FIXME: Here we want to add the trace and SpanID
+		// OpenCensus doens't expose those fields atm so we might have to look at some other solution for trace-log correlation
+		// We could also set the LogEntrySource/Operation to provide more data
+		// For proper log grouping per http request we need to set latency to the time from request to response
+		// At this time it is unclear how to hande this when logging in the middle of a request...
 		ll.sdlogger.Log(googlelog.Entry{Payload: m, Severity: severity, HTTPRequest: request})
 	} else {
 		// Here we use the local logger
