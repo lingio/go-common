@@ -196,8 +196,6 @@ func (ll *LingioLogger) logm(ctx context.Context, message string, severity googl
 		m = make(map[string]string)
 	}
 
-	m["env"] = ll.env
-	m["projectID"] = ll.projectID
 	m["message"] = message
 
 	// Try to get a trace from the context and if it is sampled we correlate this log with that trace
@@ -228,6 +226,10 @@ func (ll *LingioLogger) logm(ctx context.Context, message string, severity googl
 			fmt.Printf("Cannot log with this severity!! %v", severity)
 			return
 		}
+
+		// These won't be set unless we do it here
+		m["env"] = ll.env
+		m["projectID"] = ll.projectID
 
 		if request != nil {
 			// We send 3 as the stackdepth here to that we get the right filename in the output
