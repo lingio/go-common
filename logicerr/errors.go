@@ -47,7 +47,7 @@ func NewNotFoundError(typeName string, thingNotFound string, m map[string]string
 	m = ensureMapNotNil(m)
 	m["notFound"] = thingNotFound
 	return &Error{
-		Message:        fmt.Sprintf("%s %s not found", typeName, thingNotFound),
+		Message:        fmt.Sprintf("%s '%s' not found", typeName, thingNotFound),
 		HTTPStatusCode: http.StatusNotFound,
 		Trace:          getErrorTrace(),
 		InfoMap:        m,
@@ -59,7 +59,7 @@ func NewNotFoundErrorE(typeName string, thingNotFound string, err error, m map[s
 	m = ensureMapNotNil(m)
 	m["error"] = fmt.Sprintf("%v", err)
 	return &Error{
-		Message:        fmt.Sprintf("%s %s not found got error: %v", typeName, thingNotFound, err),
+		Message:        fmt.Sprintf("%s '%s' not found, got error: %v", typeName, thingNotFound, err),
 		HTTPStatusCode: http.StatusNotFound,
 		Trace:          getErrorTrace(),
 		InfoMap:        m,
