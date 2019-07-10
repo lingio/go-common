@@ -27,16 +27,22 @@ func Test_create(t *testing.T) {
 	//err := logicerr.Error{Message: "This is the evil error!", HttpStatusCode: 5000, InfoMap: errmap}
 	err := logicerr.NewInternalError("This is the evil error!", nil)
 
-	ll.Debug(ctx, "Woah", nil)
-	ll.Info(ctx, "Hello", nil)
-	ll.Warning(ctx, "Scary warning", nil)
-	ll.Error(ctx, "Error that broke it all", nil)
+	ll.Debug(ctx, "Woah", nil, nil)
+	ll.Info(ctx, "Hello", nil, nil)
+	ll.Warning(ctx, "Scary warning", nil, nil)
+	ll.Error(ctx, "Error that broke it all", nil, nil)
 	fmt.Println()
 
-	ll.Debug(ctx, "Woah", vmap)
-	ll.Info(ctx, "Hello", vmap)
-	ll.Warning(ctx, "Scary warning", vmap)
-	ll.Error(ctx, "Error that broke it all", vmap)
+	ll.Debug(ctx, "Woah", req, nil)
+	ll.Info(ctx, "Hello", req, nil)
+	ll.Warning(ctx, "Scary warning", req, nil)
+	ll.Error(ctx, "Error that broke it all", req, nil)
+	fmt.Println()
+
+	ll.Debug(ctx, "Woah", nil, vmap)
+	ll.Info(ctx, "Hello", nil, vmap)
+	ll.Warning(ctx, "Scary warning", nil, vmap)
+	ll.Error(ctx, "Error that broke it all", nil, vmap)
 	fmt.Println()
 
 	ll.DebugUser(ctx, "Woah", partnerID, userID, req, nil)
@@ -51,8 +57,12 @@ func Test_create(t *testing.T) {
 	ll.ErrorUser(ctx, "Error that broke it all", partnerID, userID, req, vmap)
 	fmt.Println()
 
-	ll.WarningE(ctx, "Display message for this scary warning!", err)
-	ll.ErrorE(ctx, "Display message for this horrible error!", err)
+	ll.WarningE(ctx, "Display message for this scary warning!", err, nil)
+	ll.ErrorE(ctx, "Display message for this horrible error!", err, nil)
+	fmt.Println()
+
+	ll.WarningE(ctx, "Display message for this scary warning!", err, req)
+	ll.ErrorE(ctx, "Display message for this horrible error!", err, req)
 	fmt.Println()
 
 	ll.WarningUserE(ctx, "Display message for this scary warning!", err, partnerID, userID, req)
