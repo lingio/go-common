@@ -1,7 +1,6 @@
-package middleware
+package metricsreporter
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,15 +10,20 @@ import (
 	"go.opencensus.io/tag"
 )
 
+var (
+	// NOTE: Is it important that these names are valid or the program will panic on startup
+	KeyStatus    tag.Key = tag.MustNewKey("status")
+	KeyError     tag.Key = tag.MustNewKey("error")
+	KeyErrorCode tag.Key = tag.MustNewKey("error_code")
+	KeyMethod    tag.Key = tag.MustNewKey("method")
+)
+
 type MetricsReporter struct {
 	// MLatencyMs The latency in milliseconds
 	MLatencyMs *stats.Float64Measure
 	// MErrorsCount The number of errors generated
-	MErrorsCount   *stats.Int64Measure
-	KeyStatus      tag.Key
-	KeyError       tag.Key
-	KeyErrorCode   tag.Key
-	KeyMethod      tag.Key
+	MErrorsCount *stats.Int64Measure
+
 	LatencyView    *view.View
 	ErrorCountView *view.View
 }
@@ -59,11 +63,6 @@ func CreateMetricsReporter() *MetricsReporter {
 	reporter.MLatencyMs = stats.Float64("get_course_schedule/latency", "The latency in milliseconds per request", stats.UnitMilliseconds)
 	reporter.MErrorsCount = stats.Int64("get_course_schedule/errors", "The number of errors generated", "{tot}")
 
-	// NOTE: Is it important that these names are valid or the program will panic on startup
-	reporter.KeyStatus = tag.MustNewKey("status")
-	reporter.KeyError = tag.MustNewKey("error")
-	reporter.KeyMethod = tag.MustNewKey("method")
-
 	reporter.LatencyView = &view.View{
 		Name:        "get_course_schedule/latency",
 		Measure:     reporter.MLatencyMs,
@@ -72,14 +71,16 @@ func CreateMetricsReporter() *MetricsReporter {
 		// Latency in buckets:
 		// [>=0ms, >=25ms, >=50ms, >=75ms, >=100ms, >=200ms, >=400ms, >=600ms, >=800ms, >=1s, >=2s, >=4s, >=6s]
 		Aggregation: view.Distribution(25, 50, 75, 100, 200, 400, 600, 800, 1000, 2000, 4000, 6000),
-		TagKeys:     []tag.Key{reporter.KeyStatus, reporter.KeyMethod}}
+		TagKeys:     []tag.Key{KeyMethod, KeyStatus}}
 
 	reporter.ErrorCountView = &view.View{
 		Name:        "get_course_schedule/errors",
 		Measure:     reporter.MErrorsCount,
 		Description: "The number of errors encountered",
 		Aggregation: view.Count(),
-		TagKeys:     []tag.Key{reporter.KeyErrorCode}}
+		TagKeys:     []tag.Key{KeyMethod, KeyErrorCode}}
+
+	view.Register(reporter.LatencyView, reporter.ErrorCountView)
 
 	return reporter
 }
@@ -89,26 +90,25 @@ func CreateMetricsReporter() *MetricsReporter {
 // that we want to be able to separate the measurements for
 func (t *MetricsReporter) ReportMetrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.Background()
+		ctx := r.Context()
+		// r.Context() can generate a new context so we make sure the request uses the context
+		r.WithContext(ctx)
 		startTime := time.Now()
 
 		w2 := newMetricResponseWriter(w)
 		next.ServeHTTP(w2, r)
 
 		if w2.statuscode >= 400 {
-			ctx, _ = tag.New(ctx, tag.Upsert(t.KeyStatus, "ERROR"))
+			ctx, _ = tag.New(ctx, tag.Upsert(KeyStatus, "ERROR"))
 			stats.Record(ctx, t.MErrorsCount.M(1))
 		} else {
-			ctx, _ = tag.New(ctx, tag.Upsert(t.KeyStatus, "OK"))
+			ctx, _ = tag.New(ctx, tag.Upsert(KeyStatus, "OK"))
 		}
 
 		// FIMXE: We want to tag the metric with the appropriate errormessage!
 		// But we can't really as the context is not preserved
 
-		// FIXME: We also want to tag the metric with the function that was called
-		// so we know what kind of request was sent
-
-		ctx, _ = tag.New(ctx, tag.Upsert(t.KeyErrorCode, strconv.Itoa(w2.statuscode)))
+		ctx, _ = tag.New(ctx, tag.Upsert(KeyErrorCode, strconv.Itoa(w2.statuscode)))
 		stats.Record(ctx, t.MLatencyMs.M(float64(time.Since(startTime).Nanoseconds())/1e6))
 	})
 }

@@ -81,8 +81,8 @@ func NewLingioLogger(env string, projectID string, serviceName string) *LingioLo
 }
 
 // Debug logs a debug message
-func (ll *LingioLogger) Debug(ctx context.Context, message string, m map[string]string) {
-	ll.logm(ctx, message, googlelog.Debug, m, nil)
+func (ll *LingioLogger) Debug(ctx context.Context, message string, request *http.Request, m map[string]string) {
+	ll.logm(ctx, message, googlelog.Debug, m, makeGoogleLogHTTPRequest(request))
 }
 
 // DebugUser logs a debug message
@@ -92,8 +92,8 @@ func (ll *LingioLogger) DebugUser(ctx context.Context, message string, partnerID
 }
 
 // Info logs an info message
-func (ll *LingioLogger) Info(ctx context.Context, message string, m map[string]string) {
-	ll.logm(ctx, message, googlelog.Info, m, nil)
+func (ll *LingioLogger) Info(ctx context.Context, message string, request *http.Request, m map[string]string) {
+	ll.logm(ctx, message, googlelog.Info, m, makeGoogleLogHTTPRequest(request))
 }
 
 // InfoUser logs an info message
@@ -103,8 +103,8 @@ func (ll *LingioLogger) InfoUser(ctx context.Context, message string, partnerID 
 }
 
 // Warning logs a warning message
-func (ll *LingioLogger) Warning(ctx context.Context, message string, m map[string]string) {
-	ll.logm(ctx, message, googlelog.Warning, m, nil)
+func (ll *LingioLogger) Warning(ctx context.Context, message string, request *http.Request, m map[string]string) {
+	ll.logm(ctx, message, googlelog.Warning, m, makeGoogleLogHTTPRequest(request))
 }
 
 // WarningUser logs a warning message
@@ -114,7 +114,7 @@ func (ll *LingioLogger) WarningUser(ctx context.Context, message string, partner
 }
 
 // WarningE logs a logicerr.Error warning with a custom message
-func (ll *LingioLogger) WarningE(ctx context.Context, message string, e *logicerr.Error) {
+func (ll *LingioLogger) WarningE(ctx context.Context, message string, e *logicerr.Error, request *http.Request) {
 	m := e.InfoMap
 	if m == nil {
 		m = make(map[string]string)
@@ -122,7 +122,7 @@ func (ll *LingioLogger) WarningE(ctx context.Context, message string, e *logicer
 	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
 	m["trace"] = e.Trace
 	m["error_message"] = e.Message
-	ll.logm(ctx, message, googlelog.Warning, m, nil)
+	ll.logm(ctx, message, googlelog.Warning, m, makeGoogleLogHTTPRequest(request))
 }
 
 // WarningUserE logs a warning message
@@ -135,8 +135,8 @@ func (ll *LingioLogger) WarningUserE(ctx context.Context, message string, e *log
 }
 
 // Error logs an error message
-func (ll *LingioLogger) Error(ctx context.Context, message string, m map[string]string) {
-	ll.logm(ctx, message, googlelog.Error, m, nil)
+func (ll *LingioLogger) Error(ctx context.Context, message string, request *http.Request, m map[string]string) {
+	ll.logm(ctx, message, googlelog.Error, m, makeGoogleLogHTTPRequest(request))
 }
 
 // ErrorUser logs an error message
@@ -146,7 +146,7 @@ func (ll *LingioLogger) ErrorUser(ctx context.Context, message string, partnerID
 }
 
 // ErrorE logs a logicerr.Error error with a custom message
-func (ll *LingioLogger) ErrorE(ctx context.Context, message string, e *logicerr.Error) {
+func (ll *LingioLogger) ErrorE(ctx context.Context, message string, e *logicerr.Error, request *http.Request) {
 	m := e.InfoMap
 	if m == nil {
 		m = make(map[string]string)
@@ -154,7 +154,7 @@ func (ll *LingioLogger) ErrorE(ctx context.Context, message string, e *logicerr.
 	m["error_code"] = fmt.Sprintf("%v", e.HTTPStatusCode)
 	m["trace"] = e.Trace
 	m["error_message"] = e.Message
-	ll.logm(ctx, message, googlelog.Error, m, nil)
+	ll.logm(ctx, message, googlelog.Error, m, makeGoogleLogHTTPRequest(request))
 }
 
 // ErrorUserE logs a logicerr.Error error
@@ -182,7 +182,8 @@ func makeUserMapFromExsisting(partnerID string, userID string, m map[string]stri
 	return m
 }
 
-// FIXMe: We should try to set the other fields like Latency and SpanID
+// FIXME: We want to use the current status code! We don't want to assume 200 here!!!!
+// FIXME: We should try to set the other fields like Latency and SpanID
 func makeGoogleLogHTTPRequest(request *http.Request) *googlelog.HTTPRequest {
 	return &googlelog.HTTPRequest{Request: request, Status: 200}
 }
