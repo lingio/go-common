@@ -185,11 +185,17 @@ func makeUserMapFromExsisting(partnerID string, userID string, m map[string]stri
 // FIXME: We want to use the current status code! We don't want to assume 200 here!!!!
 // FIXME: We should try to set the other fields like Latency and SpanID
 func makeGoogleLogHTTPRequest(request *http.Request) *googlelog.HTTPRequest {
-	return &googlelog.HTTPRequest{Request: request, Status: 200}
+	if request != nil {
+		return &googlelog.HTTPRequest{Request: request, Status: 200}
+	}
+	return nil
 }
 
 func makeGoogleLogErrorHTTPRequest(err *logicerr.Error, request *http.Request) *googlelog.HTTPRequest {
-	return &googlelog.HTTPRequest{Request: request, Status: err.HTTPStatusCode}
+	if request != nil {
+		return &googlelog.HTTPRequest{Request: request, Status: err.HTTPStatusCode}
+	}
+	return nil
 }
 
 func (ll *LingioLogger) logm(ctx context.Context, message string, severity googlelog.Severity, m map[string]string, request *googlelog.HTTPRequest) {
