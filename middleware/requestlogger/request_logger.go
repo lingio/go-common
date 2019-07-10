@@ -13,27 +13,27 @@ type RequestLogger struct {
 // FIXME: Apparently go ResponseWriters use a lot of "hidden" (implemented but not explicitly so)interfaces to be usable
 // this creates the problem that the wrapped response writer could hide some functionaliy from the later stages of the request hander
 // This would result in loss of functionality e.g streaming would not work becase the flushing interface is not implemented
-type metricResponseWriter struct {
+type requestLoggerResponseWriter struct {
 	writer     http.ResponseWriter
 	statuscode int
 }
 
-func newMetricResponseWriter(w http.ResponseWriter) *metricResponseWriter {
-	return &metricResponseWriter{
+func newRequestLoggerResponseWriterResponseWriter(w http.ResponseWriter) *requestLoggerResponseWriter {
+	return &requestLoggerResponseWriter{
 		writer:     w,
 		statuscode: 0,
 	}
 }
 
-func (w *metricResponseWriter) Header() http.Header {
+func (w *requestLoggerResponseWriter) Header() http.Header {
 	return w.writer.Header()
 }
 
-func (w *metricResponseWriter) Write(b []byte) (int, error) {
+func (w *requestLoggerResponseWriter) Write(b []byte) (int, error) {
 	return w.writer.Write(b)
 }
 
-func (w *metricResponseWriter) WriteHeader(statuscode int) {
+func (w *requestLoggerResponseWriter) WriteHeader(statuscode int) {
 	w.writer.WriteHeader(statuscode)
 	w.statuscode = statuscode
 }
@@ -53,16 +53,16 @@ func (t *RequestLogger) ReportMetrics(next http.Handler) http.Handler {
 		// r.Context() can generate a new context so we make sure the request uses the context
 		r.WithContext(ctx)
 
-		w2 := newMetricResponseWriter(w)
+		w2 := newRequestLoggerResponseWriterResponseWriter(w)
 		next.ServeHTTP(w2, r)
 
 		message := w.Header().Get("message")
 		if w2.statuscode >= 500 {
-			t.ll.Error(ctx, message, nil)
+			t.ll.Error(ctx, message, r, nil)
 		} else if w2.statuscode >= 400 {
-			t.ll.Warning(ctx, message, nil)
+			t.ll.Warning(ctx, message, r, nil)
 		} else {
-			t.ll.Info(ctx, message, nil)
+			t.ll.Info(ctx, message, r, nil)
 		}
 	})
 }
