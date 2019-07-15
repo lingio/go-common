@@ -2,6 +2,7 @@ package requestlogger
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/lingio/go-common/log"
 )
@@ -49,6 +50,8 @@ func CreateRequestLogger(ll *log.LingioLogger) *RequestLogger {
 // that we want to be able to separate the measurements for
 func (t *RequestLogger) ReportMetrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		startTime := time.Now()
+
 		ctx := r.Context()
 		// r.Context() can generate a new context so we make sure the request uses the context
 		r.WithContext(ctx)
@@ -56,13 +59,7 @@ func (t *RequestLogger) ReportMetrics(next http.Handler) http.Handler {
 		w2 := newRequestLoggerResponseWriterResponseWriter(w)
 		next.ServeHTTP(w2, r)
 
-		message := w.Header().Get("message")
-		if w2.statuscode >= 500 {
-			t.ll.Error(ctx, message, r, nil)
-		} else if w2.statuscode >= 400 {
-			t.ll.Warning(ctx, message, r, nil)
-		} else {
-			t.ll.Info(ctx, message, r, nil)
-		}
+		// FIXME: We want some kind of message here!
+		t.ll.LogEndOfHTTPRequest(ctx, "", w2.statuscode, r, time.Since(startTime))
 	})
 }
