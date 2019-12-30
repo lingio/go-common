@@ -1,4 +1,4 @@
-package requestlogger
+package middleware
 
 import (
 	"net/http"
@@ -45,10 +45,7 @@ func CreateRequestLogger(ll *log.LingioLogger) *RequestLogger {
 	return reporter
 }
 
-// FIXME: We want to know the name RPC
-// In this service there is only one (getCourseSchedule) but others will have more then one
-// that we want to be able to separate the measurements for
-func (t *RequestLogger) ReportMetrics(next http.Handler) http.Handler {
+func (t *RequestLogger) RequestLogHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		startTime := time.Now()
 
