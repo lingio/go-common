@@ -1,14 +1,14 @@
 module github.com/lingio/go-common
 
-go 1.12
+go 1.14
 
 require (
-	cloud.google.com/go v0.40.0
-	firebase.google.com/go v3.8.0+incompatible
+	github.com/deepmap/oapi-codegen v1.3.7
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
-	github.com/go-openapi/strfmt v0.19.0
-	github.com/go-openapi/swag v0.19.0
-	github.com/rs/cors v1.6.0
-	go.opencensus.io v0.22.0
-	google.golang.org/api v0.6.0
+	github.com/getkin/kin-openapi v0.5.1
+	github.com/labstack/echo-contrib v0.9.0
+	github.com/labstack/echo/v4 v4.1.16
+	github.com/rs/cors v1.7.0
+	github.com/ziflex/lecho/v2 v2.0.0
+	go.opencensus.io v0.22.3
 )
