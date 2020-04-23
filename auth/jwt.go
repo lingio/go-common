@@ -5,52 +5,52 @@ import (
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/labstack/echo/v4"
-	"github.com/lingio/go-common/logicerr"
+	"github.com/lingio/go-common/lingioerr"
 	"net/http"
 )
 
-func AuthCheckCtx(ctx echo.Context, publicKey *rsa.PublicKey, partnerID string, userID string) (bool, *logicerr.Error) {
+func AuthCheckCtx(ctx echo.Context, publicKey *rsa.PublicKey, partnerID string, userID string) (bool, *lingioerr.Error) {
 	if ctx.Get("bearerAuth.Scopes") == nil {
 		return true, nil // if no auth is required we return true
 	}
 	scopes := ctx.Get("bearerAuth.Scopes").([]string)
 	token, err := authTokenFromHeader(ctx)
 	if err != nil {
-		return false, logicerr.NewError("failed to get auth token from header", http.StatusUnauthorized)
+		return false, lingioerr.NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("failed to get auth token from header")
 	}
 	return authCheck(publicKey, token, partnerID, userID, scopes)
 }
 
-func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, userID string, scopes []string) (bool, *logicerr.Error) {
+func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, userID string, scopes []string) (bool, *lingioerr.Error) {
 	jwtToken, err := parseToken(publicKey, tokenStr)
 	if err != nil {
-		return false, logicerr.NewErrorE("invalid token. Failed parsing", http.StatusUnauthorized, err)
+		return false, lingioerr.NewErrorE(http.StatusUnauthorized, err).Str("partnerID", partnerID).Str("userID", userID).Msg("invalid token. Failed parsing")
 	}
 	if !jwtToken.Valid {
-		return false, logicerr.NewError("invalid token.", http.StatusUnauthorized)
+		return false, lingioerr.NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("invalid token")
 	}
 
 	// Get the Claims
 	claims, ok := jwtToken.Claims.(jwt.MapClaims)
 	if !ok {
-		return false, logicerr.NewError("failed to parse Claims", http.StatusUnauthorized)
+		return false, lingioerr.NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("failed to parse Claims")
 	}
 
 	// Check that the PartnerID in the URL-path matches the one in the JwtToken
 	if partnerID != "" && claims["partnerId"] != partnerID {
-		return false, logicerr.NewError("partnerId mismatch", http.StatusUnauthorized)
+		return false, lingioerr.NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("partnerId mismatch")
 	}
 
 	// Check that the UserID in the URL-path matches the one in the JwtToken
 	if userID != "" && claims["userId"] != userID {
-		return false, logicerr.NewError("userId mismatch", http.StatusUnauthorized)
+		return false, lingioerr.NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("userId mismatch")
 	}
 
 	// Check that user has one of the roles defined in security scope (if it's not empty)
 	if len(scopes) > 0 && scopes[0] != "" {
 		role := claims["role"]
 		if role == nil {
-			return false, logicerr.NewError("user has no role defined in token", http.StatusUnauthorized)
+			return false, lingioerr.NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("user has no role defined in token")
 		}
 		roleMatch := false
 		for _, scope := range scopes {
@@ -59,7 +59,7 @@ func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, user
 			}
 		}
 		if !roleMatch {
-			return false, logicerr.NewError("user has no claim for any of the defined scopes", http.StatusUnauthorized)
+			return false, lingioerr.NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("user has no claim for any of the defined scopes")
 		}
 	}
 
@@ -79,12 +79,12 @@ func parseToken(verifyKey *rsa.PublicKey, tokenString string) (*jwt.Token, error
 	return token, nil
 }
 
-func authTokenFromHeader(c echo.Context)(string, *logicerr.Error) {
+func authTokenFromHeader(c echo.Context) (string, *lingioerr.Error) {
 	auth := c.Request().Header.Get("Authorization")
 	authScheme := "Bearer"
 	l := len(authScheme)
 	if len(auth) > l+1 && auth[:l] == authScheme {
 		return auth[l+1:], nil
 	}
-	return "", logicerr.NewError("Authorization header missing", http.StatusBadRequest)
+	return "", lingioerr.NewError(http.StatusBadRequest).Msg("authorization header missing")
 }
