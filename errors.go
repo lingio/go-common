@@ -1,4 +1,4 @@
-package lingioerr
+package common
 
 import (
 	"fmt"
