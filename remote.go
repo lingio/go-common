@@ -1,29 +1,30 @@
 package common
 
 import (
-	"context"
+	"io/ioutil"
 	"net/http"
-
-	"go.opencensus.io/exporter/stackdriver/propagation"
-	"go.opencensus.io/plugin/ochttp"
 )
 
-func CallRemoteService(ctx context.Context, url string) (*http.Response, error) {
-	client := &http.Client{
-		Transport: &ochttp.Transport{
-			Propagation: &propagation.HTTPFormat{},
-		},
+/* 	Fetch from remote service
+Usage example:
+	b, lerr := get(fmt.Sprintf("%s/courses/%s", host, courseID))
+	if lerr != nil {
+		return nil, lerr
 	}
-	req, err := http.NewRequest("GET", url, nil)
+	var cr CourseResponse
+	err := json.Unmarshal(b, &cr)
+*/
+func HttpGet(url string) ([]byte, *Error) {
+	resp, err := http.Get(url)
+	defer resp.Body.Close()
 	if err != nil {
-		return nil, err
+		return nil, NewErrorE(http.StatusBadGateway, err).Str("url", url).Msg("error calling remote service")
+	} else if resp.StatusCode != 200 {
+		return nil, NewError(http.StatusBadGateway).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("status code error")
 	}
-	req = req.WithContext(ctx)
-	resp, err := client.Do(req)
+	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		resp.Body.Close()
-		return nil, err
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed reading response")
 	}
-
-	return resp, nil
+	return b, nil
 }
