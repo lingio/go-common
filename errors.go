@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,7 +18,21 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
-	return e.Message
+	var str strings.Builder
+	for k, v := range e.Map {
+		str.WriteString(k)
+		str.WriteString(": ")
+		str.WriteString(v)
+		str.WriteString(". ")
+	}
+	str.WriteString("statusCode: ")
+	str.WriteString(strconv.Itoa(e.HttpStatusCode))
+	str.WriteString(". trace: ")
+	str.WriteString(e.Trace)
+	str.WriteString(". message: ")
+	str.WriteString(e.Message)
+	str.WriteString(".")
+	return str.String()
 }
 
 func NewError(httpStatusCode int) *Error {

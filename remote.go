@@ -16,7 +16,9 @@ Usage example:
 */
 func HttpGet(url string) ([]byte, *Error) {
 	resp, err := http.Get(url)
-	defer resp.Body.Close()
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		return nil, NewErrorE(http.StatusBadGateway, err).Str("url", url).Msg("error calling remote service")
 	} else if resp.StatusCode != 200 {
