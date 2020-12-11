@@ -1,0 +1,9 @@
+// PUT {{.Path}}
+func (c *LingioClient) {{.FuncName}}({{.Params}}, body {{.BodyType}}) *common.Error {
+	_, lerr := common.HttpPut(fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), body)
+	if lerr != nil {
+		return lerr
+	}
+	return nil
+}
+

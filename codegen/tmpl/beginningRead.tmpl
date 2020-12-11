@@ -1,0 +1,20 @@
+package userclient
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+
+	"github.com/lingio/go-common"
+)
+
+type LingioClient struct {
+	httpClient http.Client
+	Server     string
+}
+
+func NewClient(server string) (*LingioClient, error) {
+	return &LingioClient{Server: server}, nil
+}
+
+

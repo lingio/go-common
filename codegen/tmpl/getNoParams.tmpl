@@ -1,0 +1,14 @@
+// GET {{.Path}}
+func (c *LingioClient) {{.FuncName}}() (*{{.RetObjType}}, *common.Error) {
+	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}", c.Server))
+	if lerr != nil {
+		return nil, lerr
+	}
+	var x {{.RetObjType}}
+	err := json.Unmarshal(b, &x)
+	if err != nil {
+		return nil, common.NewErrorE(http.StatusInternalServerError, err).Msg("failed to parse response")
+	}
+	return &x, nil
+}
+
