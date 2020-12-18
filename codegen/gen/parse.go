@@ -83,7 +83,7 @@ func ReadSpec(filename string) []Func {
 			endpointStrs = append(endpointStrs, funcStr)
 			break
 		}
-		if inPaths {
+		if inPaths && strings.TrimSpace(row) != "" {
 			funcStr += row + "\n"
 		}
 	}
