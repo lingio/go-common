@@ -4,4 +4,4 @@ rm -rf "$4""$2"
 mkdir "$4""$2"
 
 oapi-codegen -package "$2" -generate types "$3" > "$4""$2"/model.gen.go
-go run main.go "$1" "$3" "$4""$2"
+go run main.go "$1" "$2" "$3" "$4"

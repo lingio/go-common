@@ -24,11 +24,12 @@ type TmplParams struct {
 	Params       string
 	Params2      string
 	QueryParams  []string
+	PackageName  string
 }
 
-func GenerateAll(funcs []Func, outdir string, write bool) {
+func GenerateAll(funcs []Func, outdir string, packageName string, write bool) {
 	b := make([]byte, 0)
-	b = append(b, generateBeginning(write)...)
+	b = append(b, generateBeginning(write, packageName)...)
 
 	for _, f := range funcs {
 		postfix := ""
@@ -44,17 +45,20 @@ func GenerateAll(funcs []Func, outdir string, write bool) {
 	if write {
 		clientFilename = "writeclient.gen.go"
 	}
-	err := ioutil.WriteFile(fmt.Sprintf("%s/%s", outdir, clientFilename), b, 0644)
+	err := ioutil.WriteFile(fmt.Sprintf("%s/%s/%s", outdir, packageName, clientFilename), b, 0644)
 	if err != nil {
 		zl.Fatal().Str("err", err.Error()).Msg("error writing file")
 	}
 }
 
-func generateBeginning(write bool) []byte {
-	if write {
-		return generate("tmpl/beginningWrite.tmpl", TmplParams{})
+func generateBeginning(write bool, packageName string) []byte {
+	tmplParams := TmplParams{
+		PackageName: packageName,
 	}
-	return generate("tmpl/beginningRead.tmpl", TmplParams{})
+	if write {
+		return generate("tmpl/beginningWrite.tmpl", tmplParams)
+	}
+	return generate("tmpl/beginningRead.tmpl", tmplParams)
 }
 
 func generate(tmplFilename string, params TmplParams) []byte {
