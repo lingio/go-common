@@ -10,8 +10,13 @@ import (
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
+	zl "github.com/rs/zerolog/log"
 	"github.com/ziflex/lecho/v2"
 )
+
+type ErrorStruct struct {
+	Message string `json:"message"`
+}
 
 func NewEchoServerWithLingioStdConfig(swagger *openapi3.Swagger) *echo.Echo {
 	e := echo.New()
@@ -61,4 +66,24 @@ func Respond(ctx echo.Context, statusCode int, val interface{}, etag string) err
 		ctx.Response().Header().Set("max-age", "0")
 	}
 	return ctx.JSON(statusCode, val)
+}
+
+func RespondError(ctx echo.Context, le *Error) error {
+	// Log error
+	zle := zl.Warn()
+	if le.HttpStatusCode >= 500 {
+		zle = zl.Error().Err(le)
+	}
+	zle.Int("httpStatusCode", le.HttpStatusCode)
+	zle.Str("trace", le.Trace)
+	for k, v := range le.Map {
+		zle = zle.Str(k, v)
+	}
+	zle.Msg(le.Message)
+
+	// Create and set error object on the Echo Context
+	e := ErrorStruct{
+		Message: le.Message,
+	}
+	return Respond(ctx, le.HttpStatusCode, e, "")
 }
