@@ -2,6 +2,8 @@ package common
 
 import (
 	"context"
+	"os"
+
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -9,7 +11,6 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/ziflex/lecho/v2"
-	"os"
 )
 
 func NewEchoServerWithLingioStdConfig(swagger *openapi3.Swagger) *echo.Echo {
@@ -21,7 +22,7 @@ func NewEchoServerWithLingioStdConfig(swagger *openapi3.Swagger) *echo.Echo {
 	//e.Use(echomiddleware.Gzip())
 
 	// Set up request validation
-	options := &middleware.Options{Options: *openapi3filter.DefaultOptions,}
+	options := &middleware.Options{Options: *openapi3filter.DefaultOptions}
 	options.Options.AuthenticationFunc = func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		return nil
 	}
@@ -48,4 +49,16 @@ func oapiRequestValidatorWithOptions(swagger *openapi3.Swagger, options *middlew
 			return next(c)
 		}
 	}
+}
+
+func respond(ctx echo.Context, statusCode int, val interface{}, etag string) error {
+	if etag != "" {
+		ctx.Response().Header().Set("Cache-Control", "must-revalidate")
+		ctx.Response().Header().Set("etag", etag)
+	} else {
+		ctx.Response().Header().Set("Pragma", "no-cache")
+		ctx.Response().Header().Set("Cache-Control", "no-store")
+		ctx.Response().Header().Set("max-age", "0")
+	}
+	return ctx.JSON(statusCode, val)
 }
