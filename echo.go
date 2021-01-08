@@ -51,7 +51,7 @@ func oapiRequestValidatorWithOptions(swagger *openapi3.Swagger, options *middlew
 	}
 }
 
-func respond(ctx echo.Context, statusCode int, val interface{}, etag string) error {
+func Respond(ctx echo.Context, statusCode int, val interface{}, etag string) error {
 	if etag != "" {
 		ctx.Response().Header().Set("Cache-Control", "must-revalidate")
 		ctx.Response().Header().Set("etag", etag)
