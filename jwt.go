@@ -3,53 +3,67 @@ package common
 import (
 	"crypto/rsa"
 	"fmt"
+	"net/http"
+
 	"github.com/dgrijalva/jwt-go"
 	"github.com/labstack/echo/v4"
-	"net/http"
 )
 
-func AuthCheckCtx(ctx echo.Context, publicKey *rsa.PublicKey, partnerID string, userID string) (bool, *Error) {
+func AuthCheckCtx(ctx echo.Context, publicKey *rsa.PublicKey, partnerID string, userID string) (string, *Error) {
 	if ctx.Get("bearerAuth.Scopes") == nil {
-		return true, nil // if no auth is required we return true
+		return "", nil // if no auth is required we return true
 	}
 	scopes := ctx.Get("bearerAuth.Scopes").([]string)
 	token, err := authTokenFromHeader(ctx)
 	if err != nil {
-		return false, NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("failed to get auth token from header")
+		return "", NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("failed to get auth token from header")
 	}
-	return authCheck(publicKey, token, partnerID, userID, scopes)
+	return token, authCheck(publicKey, token, partnerID, userID, scopes)
 }
 
-func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, userID string, scopes []string) (bool, *Error) {
+func GetRole(strToken string, publicKey *rsa.PublicKey) (string, *Error) {
+	jwtToken, err := parseToken(publicKey, strToken)
+	if err != nil {
+		return "", err
+	}
+	claims, ok := jwtToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", NewError(http.StatusInternalServerError).Msg("failed to get claims from token")
+	}
+	role := claims["role"].(string)
+	return role, nil
+}
+
+func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, userID string, scopes []string) *Error {
 	jwtToken, err := parseToken(publicKey, tokenStr)
 	if err != nil {
-		return false, NewErrorE(http.StatusUnauthorized, err).Str("partnerID", partnerID).Str("userID", userID).Msg("invalid token. Failed parsing")
+		return err.Str("partnerID", partnerID).Str("userID", userID).Msg("invalid token")
 	}
 	if !jwtToken.Valid {
-		return false, NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("invalid token")
+		return NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("invalid token")
 	}
 
 	// Get the Claims
 	claims, ok := jwtToken.Claims.(jwt.MapClaims)
 	if !ok {
-		return false, NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("failed to parse Claims")
+		return NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("failed to parse Claims")
 	}
 
 	// Check that the PartnerID in the URL-path matches the one in the JwtToken
 	if partnerID != "" && claims["partnerId"] != partnerID {
-		return false, NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("partnerId mismatch")
+		return NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("partnerId mismatch")
 	}
 
 	// Check that the UserID in the URL-path matches the one in the JwtToken
 	if userID != "" && claims["userId"] != userID {
-		return false, NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("userId mismatch")
+		return NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("userId mismatch")
 	}
 
 	// Check that user has one of the roles defined in security scope (if it's not empty)
 	if len(scopes) > 0 && scopes[0] != "" {
 		role := claims["role"]
 		if role == nil {
-			return false, NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("user has no role defined in token")
+			return NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("user has no role defined in token")
 		}
 		roleMatch := false
 		for _, scope := range scopes {
@@ -58,14 +72,13 @@ func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, user
 			}
 		}
 		if !roleMatch {
-			return false, NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("user has no claim for any of the defined scopes")
+			return NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("user has no claim for any of the defined scopes")
 		}
 	}
-
-	return true, nil
+	return nil
 }
 
-func parseToken(verifyKey *rsa.PublicKey, tokenString string) (*jwt.Token, error) {
+func parseToken(verifyKey *rsa.PublicKey, tokenString string) (*jwt.Token, *Error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -73,7 +86,7 @@ func parseToken(verifyKey *rsa.PublicKey, tokenString string) (*jwt.Token, error
 		return verifyKey, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, NewErrorE(http.StatusUnauthorized, err).Msg("invalid token. Failed parsing")
 	}
 	return token, nil
 }

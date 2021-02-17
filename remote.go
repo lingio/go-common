@@ -3,13 +3,14 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 )
 
 /* 	Fetch from remote service
 Usage example:
-	b, lerr := get(fmt.Sprintf("%s/courses/%s", host, courseID))
+	b, lerr := HttpGet(fmt.Sprintf("%s/courses/%s", host, courseID), token)
 	if lerr != nil {
 		return nil, lerr
 	}
@@ -17,8 +18,13 @@ Usage example:
 	err := json.Unmarshal(b, &cr)
 */
 
-func HttpGet(url string) ([]byte, *Error) {
-	resp, err := http.Get(url)
+func HttpGet(url string, bearerToken string) ([]byte, *Error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, NewError(http.StatusInternalServerError).Msg("failed to create request")
+	}
+	setBearerToken(req, bearerToken)
+	resp, err := http.DefaultClient.Do(req)
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -34,53 +40,43 @@ func HttpGet(url string) ([]byte, *Error) {
 	return b, nil
 }
 
-func HttpPost(url string, body interface{}) ([]byte, *Error) {
-	jsonValue, err := json.Marshal(body)
-	if err != nil {
-		return []byte{}, NewErrorE(http.StatusInternalServerError, err).Msg("failed json marshal")
+func HttpPost(url string, body interface{}, bearerToken string) ([]byte, *Error) {
+	bodyBuffer, lerr := createBodyBuffer(body)
+	if lerr != nil {
+		return []byte{}, nil
 	}
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonValue))
+	req, err := http.NewRequest("POST", url, bodyBuffer)
 	if err != nil {
-		return nil, NewErrorE(http.StatusBadGateway, err).Str("url", url).Msg("error calling remote service")
-	} else if resp.StatusCode == http.StatusNotFound {
-		return nil, NewError(http.StatusNotFound).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("not found")
-	} else if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return nil, NewError(http.StatusBadGateway).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("status code error")
-	}
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return []byte{}, NewErrorE(http.StatusInternalServerError, err).Msg("failed reading the response")
-	}
-	return data, nil
-}
-
-func HttpPostNoBody(url string) ([]byte, *Error) {
-	resp, err := http.Post(url, "application/json", nil)
-	if err != nil {
-		return nil, NewErrorE(http.StatusBadGateway, err).Str("url", url).Msg("error calling remote service")
-	} else if resp.StatusCode == http.StatusNotFound {
-		return nil, NewError(http.StatusNotFound).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("not found")
-	} else if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return nil, NewError(http.StatusBadGateway).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("status code error")
-	}
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return []byte{}, NewErrorE(http.StatusInternalServerError, err).Msg("failed reading the response")
-	}
-	return data, nil
-}
-
-func HttpPut(url string, body interface{}) ([]byte, *Error) {
-	jsonValue, err := json.Marshal(body)
-	if err != nil {
-		return []byte{}, NewErrorE(http.StatusInternalServerError, err).Msg("failed json marshal")
-	}
-
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonValue))
-	if err != nil {
-		return []byte{}, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
+		return nil, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed to create request")
 	}
 	req.Header.Set("Content-Type", "application/json")
+	setBearerToken(req, bearerToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, NewError(http.StatusBadGateway).Str("err", err.Error()).Str("url", url).Msg("error calling remote service")
+	} else if resp.StatusCode == http.StatusNotFound {
+		return nil, NewError(http.StatusNotFound).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("not found")
+	} else if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		return nil, NewError(http.StatusBadGateway).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("status code error")
+	}
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return []byte{}, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed reading the response")
+	}
+	return data, nil
+}
+
+func HttpPut(url string, body interface{}, bearerToken string) ([]byte, *Error) {
+	bodyBuffer, lerr := createBodyBuffer(body)
+	if lerr != nil {
+		return []byte{}, nil
+	}
+	req, err := http.NewRequest("PUT", url, bodyBuffer)
+	if err != nil {
+		return nil, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed to create request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	setBearerToken(req, bearerToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, NewErrorE(http.StatusBadGateway, err).Str("url", url).Msg("error calling remote service")
@@ -91,28 +87,26 @@ func HttpPut(url string, body interface{}) ([]byte, *Error) {
 	}
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return []byte{}, NewErrorE(http.StatusInternalServerError, err).Msg("failed reading the response")
+		return []byte{}, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed reading the response")
 	}
 	return data, nil
 }
 
-func HttpPutNoBody(url string) ([]byte, *Error) {
-	req, err := http.NewRequest("PUT", url, nil)
-	if err != nil {
-		return []byte{}, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
+func setBearerToken(req *http.Request, bearerToken string) {
+	bearerHeader := fmt.Sprintf("Bearer %s", bearerToken)
+	if bearerToken != "" {
+		req.Header.Add("Authorization", bearerHeader)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, NewErrorE(http.StatusBadGateway, err).Str("url", url).Msg("error calling remote service")
-	} else if resp.StatusCode == http.StatusNotFound {
-		return nil, NewError(http.StatusNotFound).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("not found")
-	} else if resp.StatusCode != 200 {
-		return nil, NewError(http.StatusBadGateway).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("status code error")
+}
+
+func createBodyBuffer(body interface{}) (*bytes.Buffer, *Error) {
+	var bodyBuffer *bytes.Buffer
+	if body != nil {
+		jsonValue, err := json.Marshal(body)
+		if err != nil {
+			return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed json marshal")
+		}
+		bodyBuffer = bytes.NewBuffer(jsonValue)
 	}
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return []byte{}, NewErrorE(http.StatusInternalServerError, err).Msg("failed reading the response")
-	}
-	return data, nil
+	return bodyBuffer, nil
 }
