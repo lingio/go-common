@@ -18,6 +18,10 @@ Usage example:
 	err := json.Unmarshal(b, &cr)
 */
 
+type RemoteError struct {
+	Message string `json:"message"`
+}
+
 func HttpGet(url string, bearerToken string) ([]byte, *Error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -56,12 +60,20 @@ func HttpPost(url string, body interface{}, bearerToken string) ([]byte, *Error)
 		return nil, NewError(http.StatusBadGateway).Str("err", err.Error()).Str("url", url).Msg("error calling remote service")
 	} else if resp.StatusCode == http.StatusNotFound {
 		return nil, NewError(http.StatusNotFound).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("not found")
-	} else if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return nil, NewError(http.StatusBadGateway).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("status code error")
 	}
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return []byte{}, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed reading the response")
+	}
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		var x RemoteError
+		err := json.Unmarshal(data, &x)
+		if err != nil {
+			return nil, NewError(http.StatusBadGateway).Str("url", url).
+				Int("remoteStatusCode", resp.StatusCode).Msg("remote error without message")
+		}
+		return nil, NewError(http.StatusBadGateway).Str("url", url).
+			Int("remoteStatusCode", resp.StatusCode).Str("remoteError", x.Message).Msg("remote error")
 	}
 	return data, nil
 }
