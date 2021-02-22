@@ -28,20 +28,7 @@ func HttpGet(url string, bearerToken string) ([]byte, *Error) {
 		return nil, NewError(http.StatusInternalServerError).Msg("failed to create request")
 	}
 	setBearerToken(req, bearerToken)
-	resp, err := http.DefaultClient.Do(req)
-	if resp != nil {
-		defer resp.Body.Close()
-	}
-	if err != nil {
-		return nil, NewErrorE(http.StatusBadGateway, err).Str("url", url).Msg("error calling remote service")
-	} else if resp.StatusCode != 200 {
-		return nil, NewError(http.StatusBadGateway).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("status code error")
-	}
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed reading response")
-	}
-	return b, nil
+	return executeReq(req)
 }
 
 func HttpPost(url string, body interface{}, bearerToken string) ([]byte, *Error) {
@@ -55,27 +42,7 @@ func HttpPost(url string, body interface{}, bearerToken string) ([]byte, *Error)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	setBearerToken(req, bearerToken)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, NewError(http.StatusBadGateway).Str("err", err.Error()).Str("url", url).Msg("error calling remote service")
-	} else if resp.StatusCode == http.StatusNotFound {
-		return nil, NewError(http.StatusNotFound).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("not found")
-	}
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return []byte{}, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed reading the response")
-	}
-	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		var x RemoteError
-		err := json.Unmarshal(data, &x)
-		if err != nil {
-			return nil, NewError(http.StatusBadGateway).Str("url", url).
-				Int("remoteStatusCode", resp.StatusCode).Msg("remote error without message")
-		}
-		return nil, NewError(http.StatusBadGateway).Str("url", url).
-			Int("remoteStatusCode", resp.StatusCode).Str("remoteError", x.Message).Msg("remote error")
-	}
-	return data, nil
+	return executeReq(req)
 }
 
 func HttpPut(url string, body interface{}, bearerToken string) ([]byte, *Error) {
@@ -89,17 +56,32 @@ func HttpPut(url string, body interface{}, bearerToken string) ([]byte, *Error) 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	setBearerToken(req, bearerToken)
+	return executeReq(req)
+}
+
+func executeReq(req *http.Request) ([]byte, *Error) {
 	resp, err := http.DefaultClient.Do(req)
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
-		return nil, NewErrorE(http.StatusBadGateway, err).Str("url", url).Msg("error calling remote service")
+		return nil, NewError(http.StatusBadGateway).Str("err", err.Error()).Str("host", req.URL.Host).Str("url", req.URL.Path).Msg("error calling remote service")
 	} else if resp.StatusCode == http.StatusNotFound {
-		return nil, NewError(http.StatusNotFound).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("not found")
-	} else if resp.StatusCode != 200 {
-		return nil, NewError(http.StatusBadGateway).Str("url", url).Int("remoteStatusCode", resp.StatusCode).Msg("status code error")
+		return nil, NewError(http.StatusNotFound).Str("host", req.URL.Host).Str("url", req.URL.Path).Int("remoteStatusCode", resp.StatusCode).Msg("not found")
 	}
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return []byte{}, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed reading the response")
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		var x RemoteError
+		err := json.Unmarshal(data, &x)
+		if err != nil {
+			return nil, NewError(http.StatusBadGateway).Str("host", req.URL.Host).Str("url", req.URL.Path).
+				Int("remoteStatusCode", resp.StatusCode).Msg("remote error without message")
+		}
+		return nil, NewError(http.StatusBadGateway).Str("url", req.URL.Path).
+			Int("remoteStatusCode", resp.StatusCode).Str("remoteError", x.Message).Msg("remote error")
 	}
 	return data, nil
 }
