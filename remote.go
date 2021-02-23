@@ -65,9 +65,10 @@ func executeReq(req *http.Request) ([]byte, *Error) {
 		defer resp.Body.Close()
 	}
 	if err != nil {
+		if resp != nil {
+			return nil, NewError(resp.StatusCode).Str("err", err.Error()).Str("host", req.URL.Host).Str("url", req.URL.Path).Msg("error calling remote service")
+		}
 		return nil, NewError(http.StatusBadGateway).Str("err", err.Error()).Str("host", req.URL.Host).Str("url", req.URL.Path).Msg("error calling remote service")
-	} else if resp.StatusCode == http.StatusNotFound {
-		return nil, NewError(http.StatusNotFound).Str("host", req.URL.Host).Str("url", req.URL.Path).Int("remoteStatusCode", resp.StatusCode).Msg("not found")
 	}
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -80,7 +81,7 @@ func executeReq(req *http.Request) ([]byte, *Error) {
 			return nil, NewError(http.StatusBadGateway).Str("host", req.URL.Host).Str("url", req.URL.Path).
 				Int("remoteStatusCode", resp.StatusCode).Msg("remote error without message")
 		}
-		return nil, NewError(http.StatusBadGateway).Str("url", req.URL.Path).
+		return nil, NewError(resp.StatusCode).Str("url", req.URL.Path).
 			Int("remoteStatusCode", resp.StatusCode).Str("remoteError", x.Message).Msg("remote error")
 	}
 	return data, nil
