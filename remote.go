@@ -59,6 +59,43 @@ func HttpPut(url string, body interface{}, bearerToken string) ([]byte, *Error) 
 	return executeReq(req)
 }
 
+func HttpGetWIthApiKey(url string, apiKey string) ([]byte, *Error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, NewError(http.StatusInternalServerError).Msg("failed to create request")
+	}
+	setApiKey(req, apiKey)
+	return executeReq(req)
+}
+
+func HttpPostWithApiKey(url string, body interface{}, apiKey string) ([]byte, *Error) {
+	bodyBuffer, lerr := createBodyBuffer(body)
+	if lerr != nil {
+		return []byte{}, nil
+	}
+	req, err := http.NewRequest("POST", url, bodyBuffer)
+	if err != nil {
+		return nil, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed to create request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	setApiKey(req, apiKey)
+	return executeReq(req)
+}
+
+func HttpPutWithApiKey(url string, body interface{}, apiKey string) ([]byte, *Error) {
+	bodyBuffer, lerr := createBodyBuffer(body)
+	if lerr != nil {
+		return []byte{}, nil
+	}
+	req, err := http.NewRequest("PUT", url, bodyBuffer)
+	if err != nil {
+		return nil, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed to create request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	setApiKey(req, apiKey)
+	return executeReq(req)
+}
+
 func executeReq(req *http.Request) ([]byte, *Error) {
 	resp, err := http.DefaultClient.Do(req)
 	if resp != nil && resp.Body != nil {
@@ -92,6 +129,10 @@ func setBearerToken(req *http.Request, bearerToken string) {
 	if bearerToken != "" {
 		req.Header.Add("Authorization", bearerHeader)
 	}
+}
+
+func setApiKey(req *http.Request, key string) {
+	req.Header.Add("x-api-key", key)
 }
 
 func createBodyBuffer(body interface{}) (*bytes.Buffer, *Error) {
