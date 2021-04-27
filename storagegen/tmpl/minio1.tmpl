@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"{{.ServiceName}}/models"
+	"github.com/lingio/{{.ServiceName}}/models"
 
 	"github.com/lingio/go-common"
 	"github.com/minio/minio-go/v7"
@@ -169,15 +169,6 @@ func (db *{{.TypeName}}MinioDb) toModel(o *minio.Object) (*models.{{.DbTypeName}
 		return nil, common.NewErrorE(http.StatusInternalServerError, err).Msg("failed to unmarshal object")
 	}
 	return &target, nil
-}
-
-func minioErrToCommonErr(err error) *common.Error {
-	minioErr := err.(minio.ErrorResponse)
-	return common.NewErrorE(minioErr.StatusCode, err).
-		Str("minio.Message", minioErr.Message).
-		Str("minio.Code", minioErr.Code).
-		Str("minio.BucketName", minioErr.BucketName).
-		Str("minio.Key", minioErr.Key)
 }
 
 func (db *{{.TypeName}}MinioDb) getObject(filename string) (*models.{{.DbTypeName}}, *common.Error) {

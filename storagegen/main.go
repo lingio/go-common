@@ -45,6 +45,7 @@ func main() {
 	}
 	spec := readSpec(os.Args[1])
 	dir := path.Dir(os.Args[1])
+
 	for _, b := range spec.Buckets {
 		bytes := generate("tmpl/"+b.Template, TmplParams{
 			ServiceName: spec.ServiceName,
@@ -56,6 +57,12 @@ func main() {
 		if err != nil {
 			zl.Fatal().Str("err", err.Error()).Msg("failed to load minio template")
 		}
+	}
+
+	bytes := generate("tmpl/common.tmpl", TmplParams{})
+	err := ioutil.WriteFile(fmt.Sprintf("%s/common.gen.go", dir), bytes, 0644)
+	if err != nil {
+		zl.Fatal().Str("err", err.Error()).Msg("failed to load common template")
 	}
 
 	mp := &MinioPolicy{
