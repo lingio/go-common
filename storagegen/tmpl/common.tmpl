@@ -1,7 +1,8 @@
 package storage
 
 import (
-"github.com/lingio/go-common"
+    "github.com/lingio/go-common"
+    "github.com/minio/minio-go/v7"
 )
 
 func minioErrToCommonErr(err error) *common.Error {

@@ -46,19 +46,19 @@ func (db *{{.TypeName}}MinioDb) Get(partnerID string, id string) (*models.{{.DbT
 }
 
 func (db *{{.TypeName}}MinioDb) Create(partnerID string, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, *common.Error) {
-	if obj.ID != "" {
+	if obj.{{.IdName}} != "" {
 		// check that the object doesn't exist
-		o, err := db.Get(partnerID, obj.ID)
+		o, err := db.Get(partnerID, obj.{{.IdName}})
 		if err != nil && err.HttpStatusCode != http.StatusNotFound {
 			return nil, common.NewErrorE(http.StatusInternalServerError, err).
-				Str("partnerID", partnerID).Str("ID", obj.ID).Msg("failed query for object")
+				Str("partnerID", partnerID).Str("ID", obj.{{.IdName}}).Msg("failed query for object")
 		}
 		if o != nil { // object exists!
 			return nil, common.NewError(http.StatusBadRequest).
-				Str("partnerID", partnerID).Str("ID", obj.ID).Msg("an object with this ID is already stored in the database")
+				Str("partnerID", partnerID).Str("ID", obj.{{.IdName}}).Msg("an object with this ID is already stored in the database")
 		}
 	} else {
-		obj.ID = uuid.NewV4().String()
+		obj.{{.IdName}} = uuid.NewV4().String()
 	}
 	err := db.Put(partnerID, obj)
 	if err != nil {
@@ -71,9 +71,9 @@ func (db *{{.TypeName}}MinioDb) Put(partnerID string, obj models.{{.DbTypeName}}
 	b, err := json.Marshal(obj)
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("partnerID", partnerID).Str("ID", obj.ID).Msg("failed to marshal json")
+			Str("partnerID", partnerID).Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
 	}
-	_, err = db.c.PutObject(context.Background(), db.bucketName, db.filename(partnerID, obj.ID), bytes.NewBuffer(b), int64(len(b)), minio.PutObjectOptions{
+	_, err = db.c.PutObject(context.Background(), db.bucketName, db.filename(partnerID, obj.{{.IdName}}), bytes.NewBuffer(b), int64(len(b)), minio.PutObjectOptions{
 		UserMetadata:            nil,
 		UserTags:                nil,
 		ContentType:             "application/json",
@@ -93,7 +93,7 @@ func (db *{{.TypeName}}MinioDb) Put(partnerID string, obj models.{{.DbTypeName}}
 	})
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("partnerID", partnerID).Str("ID", obj.ID).Msg("failed to write to minio")
+			Str("partnerID", partnerID).Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
 	}
 	return nil
 }
