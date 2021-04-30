@@ -17,6 +17,7 @@ type BucketSpec struct {
 	DbTypeName string
 	BucketName string
 	Template   string
+	IdName     *string
 }
 
 type StorageSpec struct {
@@ -45,17 +46,29 @@ func main() {
 	}
 	spec := readSpec(os.Args[1])
 	dir := path.Dir(os.Args[1])
+
 	for _, b := range spec.Buckets {
+		in := "ID"
+		if b.IdName != nil {
+			in = *b.IdName
+		}
 		bytes := generate("tmpl/"+b.Template, TmplParams{
 			ServiceName: spec.ServiceName,
 			TypeName:    b.TypeName,
 			DbTypeName:  b.DbTypeName,
 			BucketName:  b.BucketName,
+			IdName:      in,
 		})
 		err := ioutil.WriteFile(fmt.Sprintf("%s/%s.gen.go", dir, b.BucketName), bytes, 0644)
 		if err != nil {
 			zl.Fatal().Str("err", err.Error()).Msg("failed to load minio template")
 		}
+	}
+
+	bytes := generate("tmpl/common.tmpl", TmplParams{})
+	err := ioutil.WriteFile(fmt.Sprintf("%s/common.gen.go", dir), bytes, 0644)
+	if err != nil {
+		zl.Fatal().Str("err", err.Error()).Msg("failed to load common template")
 	}
 
 	mp := &MinioPolicy{
@@ -100,6 +113,7 @@ type TmplParams struct {
 	DbTypeName  string
 	BucketName  string
 	ServiceName string
+	IdName      string
 }
 
 type TmplParams2 struct {
@@ -109,7 +123,7 @@ type TmplParams2 struct {
 func generate(tmplFilename string, params interface{}) []byte {
 	tpl, err := template.ParseFiles(tmplFilename)
 	if err != nil {
-		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to load message template")
+		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to load template")
 	} else if tpl == nil {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Msg("template is nil. failed to load message template")
 	}
