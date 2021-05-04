@@ -31,7 +31,9 @@ func NewEchoServerWithLingioStdConfig(swagger *openapi3.Swagger) *echo.Echo {
 	options.Options.AuthenticationFunc = func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		return nil
 	}
-	e.Use(oapiRequestValidatorWithOptions(swagger, options)) // check all requests against the OpenAPI schema
+	//e.Use(oapiRequestValidatorWithOptions(swagger, options)) // check all requests against the OpenAPI schema
+	options.Skipper = metricsSkipper
+	e.Use(middleware.OapiRequestValidatorWithOptions(swagger, options)) // check all requests against the OpenAPI schema
 
 	// Init Prometheus
 	p := prometheus.NewPrometheus("echo", nil)
@@ -40,20 +42,8 @@ func NewEchoServerWithLingioStdConfig(swagger *openapi3.Swagger) *echo.Echo {
 	return e
 }
 
-func oapiRequestValidatorWithOptions(swagger *openapi3.Swagger, options *middleware.Options) echo.MiddlewareFunc {
-	router := openapi3filter.NewRouter().WithSwagger(swagger)
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			if c.Path() == "/metrics" {
-				return next(c)
-			}
-			err := middleware.ValidateRequestFromContext(c, router, options)
-			if err != nil {
-				return err
-			}
-			return next(c)
-		}
-	}
+func metricsSkipper(ectx echo.Context) bool {
+	return ectx.Path() == "/metrics"
 }
 
 func Respond(ctx echo.Context, statusCode int, val interface{}, etag string) error {
