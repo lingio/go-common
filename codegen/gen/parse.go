@@ -119,10 +119,15 @@ func ReadSpec(filename string) []Func {
 	return funcs
 }
 
+type QueryParam struct {
+	Name string
+	Type string
+}
+
 func templParams(path string, fs FuncSpec) TmplParams {
 	params := ""
 	params2 := ""
-	queryParams := make([]string, 0)
+	queryParams := make([]QueryParam, 0)
 	numPathParams := 0
 	numQueryParams := 0
 	for _, p := range fs.Parameters {
@@ -140,7 +145,10 @@ func templParams(path string, fs FuncSpec) TmplParams {
 				params += ", "
 			}
 			params += p.Name + " *" + gotype(p.Schema.Type)
-			queryParams = append(queryParams, p.Name)
+			queryParams = append(queryParams, QueryParam{
+				Name: p.Name,
+				Type: p.Schema.Type,
+			})
 		} else {
 			zl.Fatal().Str("parameters.in", p.In).Msg("unexpected value for parameter type")
 		}

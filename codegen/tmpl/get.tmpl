@@ -6,10 +6,17 @@ func (c *LingioClient) {{.FuncName}}({{.Params}}) (*{{.RetObjType}}, *common.Err
 	query := ""
 
 	{{- range .QueryParams}}
-	if {{ . }} != nil {
-		query += fmt.Sprintf("{{ . }}=%s", *{{ . }})
-	}
+
+	// {{ .Name }} of type {{ .Type }}
+	if {{ .Name }} != nil {
+        {{- if eq .Type "boolean"}}
+            query += fmt.Sprintf("{{ .Name }}=%t", *{{ .Name }})
+        {{- else }}
+            query += fmt.Sprintf("{{ .Name }}=%s", *{{ .Name }})
+        {{- end}}
+        }
 	{{- end}}
+
 	if query != "" {
 	    query = "?" + query
 	}

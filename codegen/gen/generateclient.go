@@ -23,7 +23,7 @@ type TmplParams struct {
 	RetObjType   string
 	Params       string
 	Params2      string
-	QueryParams  []string
+	QueryParams  []QueryParam
 	PackageName  string
 }
 
