@@ -59,7 +59,7 @@ func HttpPut(url string, body interface{}, bearerToken string) ([]byte, *Error) 
 	return executeReq(req)
 }
 
-func HttpGetWIthApiKey(url string, apiKey string) ([]byte, *Error) {
+func HttpGetWithApiKey(url string, apiKey string) ([]byte, *Error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, NewError(http.StatusInternalServerError).Msg("failed to create request")
