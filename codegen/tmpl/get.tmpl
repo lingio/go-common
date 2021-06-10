@@ -9,6 +9,9 @@ func (c *LingioClient) {{.FuncName}}({{.Params}}) (*{{.RetObjType}}, *common.Err
 
 	// {{ .Name }} of type {{ .Type }}
 	if {{ .Name }} != nil {
+	    if query != "" {
+            query += "&"
+        }
         {{- if eq .Type "boolean"}}
             query += fmt.Sprintf("{{ .Name }}=%t", *{{ .Name }})
         {{- else }}
