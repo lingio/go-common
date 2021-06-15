@@ -58,10 +58,15 @@ func Respond(ctx echo.Context, statusCode int, val interface{}, etag string) err
 	return ctx.JSON(statusCode, val)
 }
 
-func RespondFile(ctx echo.Context, statusCode int, file []byte, fileName string, contentType string) error {
-	ctx.Response().Header().Set("Pragma", "no-cache")
-	ctx.Response().Header().Set("Cache-Control", "no-store")
-	ctx.Response().Header().Set("max-age", "0")
+func RespondFile(ctx echo.Context, statusCode int, file []byte, fileName string, contentType string, etag string) error {
+	if etag != "" {
+		ctx.Response().Header().Set("Cache-Control", "must-revalidate")
+		ctx.Response().Header().Set("etag", etag)
+	} else {
+		ctx.Response().Header().Set("Pragma", "no-cache")
+		ctx.Response().Header().Set("Cache-Control", "no-store")
+		ctx.Response().Header().Set("max-age", "0")
+	}
 	ctx.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s;", fileName))
 	return ctx.Blob(statusCode, contentType, file)
 }
