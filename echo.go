@@ -2,8 +2,7 @@ package common
 
 import (
 	"context"
-	"os"
-
+	"fmt"
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -12,6 +11,7 @@ import (
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	zl "github.com/rs/zerolog/log"
 	"github.com/ziflex/lecho/v2"
+	"os"
 )
 
 type ErrorStruct struct {
@@ -56,6 +56,14 @@ func Respond(ctx echo.Context, statusCode int, val interface{}, etag string) err
 		ctx.Response().Header().Set("max-age", "0")
 	}
 	return ctx.JSON(statusCode, val)
+}
+
+func RespondFile(ctx echo.Context, statusCode int, file []byte, fileName string, contentType string) error {
+	ctx.Response().Header().Set("Pragma", "no-cache")
+	ctx.Response().Header().Set("Cache-Control", "no-store")
+	ctx.Response().Header().Set("max-age", "0")
+	ctx.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s;", fileName))
+	return ctx.Blob(statusCode, contentType, file)
 }
 
 func RespondError(ctx echo.Context, le *Error) error {
