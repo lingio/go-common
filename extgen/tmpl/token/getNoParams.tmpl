@@ -1,0 +1,7 @@
+// GET {{.Path}}
+func (c *LingioClient) {{.FuncName}}(token string) (*{{.RetObjType}}, *common.Error) {
+	var x {{.RetObjType}}
+	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}", c.Server), token)
+    {{template "parseJson.tmpl" -}}
+}
+

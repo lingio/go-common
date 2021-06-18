@@ -1,5 +1,6 @@
 // GET {{.Path}}
-func (c *LingioClient) {{.FuncName}}({{.Params}}) (*{{.RetObjType}}, *common.Error) {
+func (c *LingioClient) {{.FuncName}}({{.Params}}, token string) (*{{.RetObjType}}, *common.Error) {
+	var x {{.RetObjType}}
     {{- if .QueryParams}}
 
     // Handle query parameters
@@ -24,19 +25,10 @@ func (c *LingioClient) {{.FuncName}}({{.Params}}) (*{{.RetObjType}}, *common.Err
 	    query = "?" + query
 	}
 
-	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}%s", c.Server, {{.Params2}}, query))
+	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}%s", c.Server, {{.Params2}}, query), token)
 	{{- else}}
-	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}))
+	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), token)
 	{{- end}}
-
-	if lerr != nil {
-		return nil, lerr
-	}
-	var x {{.RetObjType}}
-	err := json.Unmarshal(b, &x)
-	if err != nil {
-		return nil, common.NewErrorE(http.StatusInternalServerError, err).Msg("failed to parse response")
-	}
-	return &x, nil
+    {{template "parseJson.tmpl" -}}
 }
 
