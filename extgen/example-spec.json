@@ -1,10 +1,10 @@
 {
-  "name": "partner-service",
   "package": "partnerclient",
-  "openOperation": [],
+  "openOperations": [
+    "GetConfig"
+  ],
   "tokenOperations": [
-    "GetConfig",
-    "GetMyInvites"
+    "GetMyAccess"
   ],
   "apiKeyOperations": []
 }

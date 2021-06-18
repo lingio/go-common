@@ -12,6 +12,13 @@ import (
 	zl "github.com/rs/zerolog/log"
 )
 
+/*
+Example: To call Partner Service from Person Service:
+1. Create a directory in Person Service for the new client
+2. Create a specification file in that directory with the endpoints you need to access (see example-spec.json)
+3. Run the following command:
+>go run main.go ~/go/person-service/extservices/partnerclient/spec.json ~/go/partner-service/spec.yaml
+*/
 func main() {
 	if len(os.Args) < 3 {
 		zl.Fatal().Msg("Usage: go run main.go <extconfig.json> <spec.json>")
