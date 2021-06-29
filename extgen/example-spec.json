@@ -1,0 +1,10 @@
+{
+  "package": "partnerclient",
+  "openOperations": [
+    "GetConfig"
+  ],
+  "tokenOperations": [
+    "GetMyAccess"
+  ],
+  "apiKeyOperations": []
+}

@@ -1,0 +1,34 @@
+// GET {{.Path}}
+func (c *LingioClient) {{.FuncName}}({{.Params}}, token string) (*{{.RetObjType}}, *common.Error) {
+	var x {{.RetObjType}}
+    {{- if .QueryParams}}
+
+    // Handle query parameters
+	query := ""
+
+	{{- range .QueryParams}}
+
+	// {{ .Name }} of type {{ .Type }}
+	if {{ .Name }} != nil {
+	    if query != "" {
+            query += "&"
+        }
+        {{- if eq .Type "boolean"}}
+            query += fmt.Sprintf("{{ .Name }}=%t", *{{ .Name }})
+        {{- else }}
+            query += fmt.Sprintf("{{ .Name }}=%s", *{{ .Name }})
+        {{- end}}
+        }
+	{{- end}}
+
+	if query != "" {
+	    query = "?" + query
+	}
+
+	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}%s", c.Server, {{.Params2}}, query), token)
+	{{- else}}
+	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), token)
+	{{- end}}
+    {{template "parseJson.tmpl" -}}
+}
+

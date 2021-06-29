@@ -1,0 +1,9 @@
+// PUT {{.Path}}
+func (c *LingioClient) {{.FuncName}}UsingApiKey(body {{.BodyType}}, apiKey string) *common.Error {
+	_, lerr := common.HttpPutWithApiKey(fmt.Sprintf("%s{{.PathTemplate}}", c.Server), body)
+	if lerr != nil {
+		return lerr
+	}
+	return nil
+}
+

@@ -35,9 +35,31 @@ type resp struct {
 	Type string `yaml:"$ref"`
 }
 
+type BearerAuth struct {
+	Type   string
+	Scheme string
+}
+
+type ApiKeyAuth struct {
+	Type string
+	In   string
+	Name string
+}
+
+type SecurityScheme struct {
+	BearerAuth *BearerAuth
+	ApiKeyAuth *ApiKeyAuth
+}
+
+type SecInfo struct {
+	BearerAuth []string `yaml:"bearerAuth"`
+	ApiKeyAuth []string `yaml:"apiKeyAuth"`
+}
+
 type FuncSpec struct {
 	Summary     string
-	OperationID string `yaml:"operationId"`
+	OperationID string    `yaml:"operationId"`
+	Security    []SecInfo `yaml:"security"`
 	Parameters  []InParams
 	RequestBody reqBody `yaml:"requestBody"`
 	Responses   struct {
@@ -53,7 +75,7 @@ type Spec struct {
 	Post FuncSpec
 }
 
-func ReadSpec(filename string) []Func {
+func ReadSpec(filename string) map[string]Func {
 
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -88,7 +110,7 @@ func ReadSpec(filename string) []Func {
 		}
 	}
 
-	funcs := make([]Func, 0)
+	funcs := make(map[string]Func, 0)
 	for i, eps := range endpointStrs { // one entry for each endpoint (independent upon HTTP Method)
 		path := paths[i]
 		spec := Spec{}
@@ -98,22 +120,22 @@ func ReadSpec(filename string) []Func {
 		}
 
 		if spec.Get.OperationID != "" {
-			funcs = append(funcs, Func{
+			funcs[spec.Get.OperationID] = Func{
 				TmplParams: templParams(path, spec.Get),
 				HttpMethod: "GET",
-			})
+			}
 		}
 		if spec.Put.OperationID != "" {
-			funcs = append(funcs, Func{
+			funcs[spec.Put.OperationID] = Func{
 				TmplParams: templParams(path, spec.Put),
 				HttpMethod: "PUT",
-			})
+			}
 		}
 		if spec.Post.OperationID != "" {
-			funcs = append(funcs, Func{
+			funcs[spec.Post.OperationID] = Func{
 				TmplParams: templParams(path, spec.Post),
 				HttpMethod: "POST",
-			})
+			}
 		}
 	}
 	return funcs
@@ -154,6 +176,16 @@ func templParams(path string, fs FuncSpec) TmplParams {
 		}
 	}
 
+	/*
+		if hasTokenAuth(fs) {
+			if params == "" {
+				params += "token string"
+			} else {
+				params += ", token string"
+			}
+		}
+	*/
+
 	rt := fs.Responses.Resp200.Type
 	if fs.Responses.Resp201.Type != "" {
 		rt = fs.Responses.Resp201.Type
@@ -168,7 +200,27 @@ func templParams(path string, fs FuncSpec) TmplParams {
 		Params:       params,
 		Params2:      params2,
 		QueryParams:  queryParams,
+		TokenAuth:    hasTokenAuth(fs),
+		ApiKeyAuth:   hasApiKeyAuth(fs),
 	}
+}
+
+func hasTokenAuth(fs FuncSpec) bool {
+	for _, s := range fs.Security {
+		if s.BearerAuth != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func hasApiKeyAuth(fs FuncSpec) bool {
+	for _, s := range fs.Security {
+		if s.ApiKeyAuth != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func templetize(path string) string {
