@@ -65,11 +65,12 @@ func readExtConfig(filename string) gen.ExtSpec {
 func copyVersionFile(sourceDir string, targetDir string) {
 	src, err := ioutil.ReadFile(fmt.Sprintf("%s/build/version", sourceDir))
 	if err != nil {
-		zl.Fatal().Str("err", err.Error()).Msg("failed to load version file")
+		zl.Warn().Str("err", err.Error()).Msg("failed to load version file")
+		return
 	}
 
 	err = ioutil.WriteFile(fmt.Sprintf("%s/version", targetDir), src, 0644)
 	if err != nil {
-		zl.Fatal().Str("err", err.Error()).Msg("failed to write version file")
+		zl.Warn().Str("err", err.Error()).Msg("failed to write version file")
 	}
 }
