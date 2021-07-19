@@ -55,7 +55,10 @@ func Respond(ctx echo.Context, statusCode int, val interface{}, etag string) err
 		ctx.Response().Header().Set("Cache-Control", "no-store")
 		ctx.Response().Header().Set("max-age", "0")
 	}
-	return ctx.JSON(statusCode, val)
+	if val != nil {
+		return ctx.JSON(statusCode, val)
+	}
+	return ctx.NoContent(statusCode)
 }
 
 func RespondFile(ctx echo.Context, statusCode int, file []byte, fileName string, contentType string, etag string) error {
