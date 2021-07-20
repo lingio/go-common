@@ -49,6 +49,27 @@ func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, user
 		return NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("failed to parse Claims")
 	}
 
+	if claims["apiRoles"] != nil {
+		if len(scopes) > 0 && scopes[0] != "" {
+			apiRoles := make(map[string]bool)
+			roles := claims["apiRoles"].([]interface{})
+			for i := range roles {
+				apiRoles[roles[i].(string)] = true
+			}
+
+			roleMatch := false
+			for _, scope := range scopes {
+				if apiRoles[scope] {
+					roleMatch = true
+				}
+			}
+			if !roleMatch {
+				return NewError(http.StatusUnauthorized).Msg("apiUser has no claim for any of the defined scopes")
+			}
+		}
+		return nil
+	}
+
 	// Check that the PartnerID in the URL-path matches the one in the JwtToken
 	if partnerID != "" && claims["partnerId"] != partnerID {
 		return NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("partnerId mismatch")
