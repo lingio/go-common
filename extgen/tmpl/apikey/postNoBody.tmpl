@@ -1,7 +1,0 @@
-// POST {{.Path}}
-func (c *LingioClient) {{.FuncName}}UsingApiKey({{.Params}}, apiKey string) (*{{.RetObjType}}, *common.Error) {
-	var x {{.RetObjType}}
-	b, lerr := common.HttpPostNoBodyWithApiKey(fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}))
-    {{template "parseJson.tmpl" -}}
-}
-

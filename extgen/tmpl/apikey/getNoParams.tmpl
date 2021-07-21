@@ -1,7 +1,0 @@
-// GET {{.Path}}
-func (c *LingioClient) {{.FuncName}}UsingApiKey(apiKey string) (*{{.RetObjType}}, *common.Error) {
-	var x {{.RetObjType}}
-	b, lerr := common.HttpGetWithApiKey(fmt.Sprintf("%s{{.PathTemplate}}", c.Server))
-    {{template "parseJson.tmpl" -}}
-}
-
