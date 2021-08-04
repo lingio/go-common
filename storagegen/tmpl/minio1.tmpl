@@ -113,7 +113,7 @@ func (db *{{.TypeName}}MinioDb) Delete(partnerID string, id string) *common.Erro
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("partnerID", partnerID).Str("ID", id).Msg("failed to delete object in minio because of etag issue")
 	}
-	etag = etag + "1" // TODO: improve etag generation
+	etag = etag + "x"
     return writePartnerBucketETag(db.c, db.bucketName, partnerID, etag)
 }
 
