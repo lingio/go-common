@@ -13,11 +13,12 @@ import (
 )
 
 type BucketSpec struct {
-	TypeName   string
-	DbTypeName string
-	BucketName string
-	Template   string
-	IdName     *string
+	TypeName      string
+	DbTypeName    string
+	BucketName    string
+	Template      string
+	IdName        *string
+	InclPartnerID *bool
 }
 
 type StorageSpec struct {
@@ -48,16 +49,21 @@ func main() {
 	dir := path.Dir(os.Args[1])
 
 	for _, b := range spec.Buckets {
-		in := "ID"
+		idName := "ID"
 		if b.IdName != nil {
-			in = *b.IdName
+			idName = *b.IdName
+		}
+		inclPartnerID := true // default to true
+		if b.InclPartnerID != nil {
+			inclPartnerID = *b.InclPartnerID
 		}
 		bytes := generate("tmpl/"+b.Template, TmplParams{
-			ServiceName: spec.ServiceName,
-			TypeName:    b.TypeName,
-			DbTypeName:  b.DbTypeName,
-			BucketName:  b.BucketName,
-			IdName:      in,
+			ServiceName:   spec.ServiceName,
+			TypeName:      b.TypeName,
+			DbTypeName:    b.DbTypeName,
+			BucketName:    b.BucketName,
+			IdName:        idName,
+			InclPartnerID: inclPartnerID,
 		})
 		err := ioutil.WriteFile(fmt.Sprintf("%s/%s.gen.go", dir, b.BucketName), bytes, 0644)
 		if err != nil {
@@ -109,11 +115,12 @@ func readSpec(filename string) StorageSpec {
 }
 
 type TmplParams struct {
-	TypeName    string
-	DbTypeName  string
-	BucketName  string
-	ServiceName string
-	IdName      string
+	TypeName      string
+	DbTypeName    string
+	BucketName    string
+	ServiceName   string
+	IdName        string
+	InclPartnerID bool
 }
 
 type TmplParams2 struct {

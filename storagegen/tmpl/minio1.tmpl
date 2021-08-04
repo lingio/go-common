@@ -155,7 +155,11 @@ func (db *{{.TypeName}}MinioDb) initBucket(mc *minio.Client, useVersioning bool)
 }
 
 func (db *{{.TypeName}}MinioDb) filename(partnerID string, id string) string {
+    {{ if .InclPartnerID }}
 	return fmt.Sprintf("%s-%s.json", partnerID, id)
+	{{ else }}
+	return fmt.Sprintf("%s.json", id)
+	{{ end }}
 }
 
 func (db *{{.TypeName}}MinioDb) toModel(o *minio.Object) (*models.{{.DbTypeName}}, *common.Error) {
