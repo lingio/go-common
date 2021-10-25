@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/lingio/go-common"
 	zl "github.com/rs/zerolog/log"
 )
 
@@ -22,6 +23,7 @@ type BucketSpec struct {
 	Version          string
 	IdName           *string
 	InclPartnerID    *bool
+	Config           *common.ObjectStoreConfig
 }
 
 type SecondaryIndex struct {
@@ -56,11 +58,23 @@ func main() {
 	spec := readSpec(os.Args[1])
 	dir := path.Dir(os.Args[1])
 
+	defaultObjectStoreConfig := common.ObjectStoreConfig{
+		Versioning:         false,
+		ObjectLocking:      false,
+		Lifecycle:          nil,
+		ContentType:        "application/json",
+		ContentDisposition: "",
+	}
+
 	for _, b := range spec.Buckets {
 		privateTypeName := strings.ToLower(b.TypeName[0:1]) + b.TypeName[1:]
 		idName := "ID"
 		if b.IdName != nil {
 			idName = *b.IdName
+		}
+		config := defaultObjectStoreConfig
+		if b.Config != nil {
+			config = *b.Config
 		}
 		inclPartnerID := true // default to true
 		if b.InclPartnerID != nil {
@@ -99,6 +113,7 @@ func main() {
 			IdName:           idName,
 			Version:          b.Version,
 			InclPartnerID:    inclPartnerID,
+			Config:           config,
 		})
 		// go codeconv uses _ in filenames
 		filename := fmt.Sprintf("%s.gen.go", strings.Replace(b.BucketName, "-", "_", -1))
@@ -161,6 +176,7 @@ type TmplParams struct {
 	Version          string
 	SecondaryIndexes []SecondaryIndex
 	InclPartnerID    bool
+	Config           common.ObjectStoreConfig
 }
 
 type TmplParams2 struct {
@@ -169,8 +185,9 @@ type TmplParams2 struct {
 
 func generate(tmplFilename string, params interface{}) []byte {
 	funcMap := template.FuncMap{
-		"ToUpper": strings.ToUpper,
-		"ToLower": strings.ToLower,
+		"ToUpper":     strings.ToUpper,
+		"ToLower":     strings.ToLower,
+		"PrettyPrint": prettyPrint,
 	}
 	tpltxt, err := os.ReadFile(tmplFilename)
 	if err != nil {
@@ -190,4 +207,9 @@ func generate(tmplFilename string, params interface{}) []byte {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err2.Error()).Msg("failed to generate message")
 	}
 	return b.Bytes()
+}
+
+func prettyPrint(i interface{}) string {
+	s, _ := json.MarshalIndent(i, "", "\t")
+	return string(s)
 }

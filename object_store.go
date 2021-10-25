@@ -31,14 +31,6 @@ type ObjectStoreConfig struct {
 	ContentDisposition string
 }
 
-var DefaultObjectStoreConfig = ObjectStoreConfig{
-	Versioning:         false,
-	ObjectLocking:      false,
-	Lifecycle:          nil,
-	ContentType:        "application/json",
-	ContentDisposition: "",
-}
-
 // NewObjectStore attempts to initialize a new bucket if it does not already exist.
 func NewObjectStore(mc *minio.Client, bucketName string, config ObjectStoreConfig) (*ObjectStore, error) {
 	if err := initBucket(mc, bucketName, config); err != nil {

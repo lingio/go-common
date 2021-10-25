@@ -28,6 +28,16 @@ const {{$cacheKey}}ID = "{{.IdName | ToLower }}"
 const {{$cacheKey}}{{.Name}} = "{{.CacheKey}}"
 {{end}}
 
+var {{$storeName}}Config common.ObjectStoreConfig
+func init() {
+	err := json.Unmarshal([]byte(`
+{{.Config | PrettyPrint}}
+	`), &{{$storeName}}Config)
+	if err != nil {
+		panic(fmt.Errorf("error parsing store config: %w", err))
+	}
+}
+
 type {{$storeName}} struct {
 	backend common.LingioStore
 	cache   {{$cacheInterface}}
@@ -70,7 +80,7 @@ type {{.TypeName}}CacheIngest struct {
 // New{{$storeName}} configures a new store and initializes the provided cache if required.
 func New{{$storeName}}(mc *minio.Client, cache {{.TypeName}}Cache, serviceKey string) (*{{$storeName}}, error) {
 	// DefaultOjbectStoreConfig || deserialize
-	objectStore, err := common.NewObjectStore(mc, "{{.BucketName}}", common.DefaultObjectStoreConfig)
+	objectStore, err := common.NewObjectStore(mc, "{{.BucketName}}", {{$storeName}}Config)
 	if err != nil {
 		return nil, fmt.Errorf("creating object store: %w", err)
 	}
