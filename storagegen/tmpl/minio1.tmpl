@@ -179,7 +179,7 @@ func (ps *{{$storeName}}) filename(id string) string {
 //=============================================================================
 
 // Create attempts to store the provided object in store.
-func (s *{{$storeName}}) Create(partnerID string, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, *common.Error) {
+func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, *common.Error) {
 	if obj.{{.IdName}} != "" {
 		// check that the object doesn't exist
 		o, _, err := s.Get(obj.{{.IdName}})
@@ -194,7 +194,7 @@ func (s *{{$storeName}}) Create(partnerID string, obj models.{{.DbTypeName}}) (*
 	} else {
 		obj.{{.IdName}} = uuid.NewV4().String()
 	}
-	if err := s.put(obj); err != nil {
+	if err := s.put(ctx, obj); err != nil {
 		return nil, err
 	}
 	return &obj, nil
@@ -207,18 +207,18 @@ func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *commo
 }
 
 // Put updates or creates the object in both cache and backing store.
-func (s *{{$storeName}}) Put(obj models.{{.DbTypeName}}) *common.Error {
-	return s.put(obj)
+func (s *{{$storeName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
+	return s.put(ctx, obj)
 }
 
 // put does the heavy lifting for both Put and Create methods.
-func (s *{{$storeName}}) put(obj models.{{.DbTypeName}}) *common.Error {
+func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
 	}
-	info, err := s.backend.PutObject(s.filename(obj.{{.IdName}}), data)
+	info, err := s.backend.PutObject(ctx, s.filename(obj.{{.IdName}}), data)
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
@@ -232,8 +232,8 @@ func (s *{{$storeName}}) put(obj models.{{.DbTypeName}}) *common.Error {
 }
 
 // Delete
-func (s *{{$storeName}}) Delete(id string) *common.Error {
-	if err := s.backend.DeleteObject(s.filename(id)); err != nil {
+func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
+	if err := s.backend.DeleteObject(ctx, s.filename(id)); err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", id).Msg("failed to delete object in minio")
 	}

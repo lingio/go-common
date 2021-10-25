@@ -73,7 +73,8 @@ func (os ObjectStore) GetObject(file string) ([]byte, ObjectInfo, error) {
 }
 
 // PutObject uploads the object with pre-configured content type and content disposition.
-func (os ObjectStore) PutObject(file string, data []byte) (ObjectInfo, error) {
+func (os ObjectStore) PutObject(ctx context.Context, file string, data []byte) (_ ObjectInfo, diderr error) {
+	defer os.auditLog(ctx, "Put", file, diderr)
 	info, err := os.mc.PutObject(context.Background(), os.bucketName, file, bytes.NewBuffer(data), int64(len(data)), minio.PutObjectOptions{
 		ContentType:        os.config.ContentType,
 		ContentDisposition: os.config.ContentDisposition,
@@ -90,7 +91,8 @@ func (os ObjectStore) PutObject(file string, data []byte) (ObjectInfo, error) {
 }
 
 // DeleteObject will attempt to remove the requested file/object.
-func (os ObjectStore) DeleteObject(file string) error {
+func (os ObjectStore) DeleteObject(ctx context.Context, file string) (diderr error) {
+	defer os.auditLog(ctx, "Delete", file, diderr)
 	err := os.mc.RemoveObject(context.Background(), os.bucketName, file, minio.RemoveObjectOptions{
 		// TODO: add support for VersionID ?
 	})
@@ -146,4 +148,13 @@ func initBucket(mc *minio.Client, bucketName string, config ObjectStoreConfig) e
 		}
 	}
 	return nil
+}
+
+func (os ObjectStore) auditLog(ctx context.Context, action, object string, err error) {
+	ctx = WithBucket(ctx, os.bucketName)
+	ctx = WithAction(ctx, action)
+	ctx = WithObject(ctx, object)
+	if err == nil {
+		LogAuditEvent(ctx)
+	}
 }
