@@ -1,207 +1,442 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"time"
 
-	"github.com/lingio/{{.ServiceName}}/models"
+	"github.com/lingio/person-service/models"
 
 	"github.com/lingio/go-common"
 	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	uuid "github.com/satori/go.uuid"
+
+	zl "github.com/rs/zerolog/log"
 )
 
-type {{.TypeName}}MinioDb struct {
-	c          *minio.Client
-	bucketName string
+{{$modelName := .DbTypeName -}}
+{{$ID := .IdName -}}
+{{$storeName := printf "%sStore" .TypeName -}}
+{{$cacheInterface := printf "%sCache" .TypeName -}}
+{{$cacheName := printf "%sRedisCache" .TypeName -}}
+{{$cacheKey := printf "%sCacheKey" .TypeName -}}
+
+const {{$cacheKey}}ID = "{{.IdName | ToLower }}"
+{{range .SecondaryIndexes -}}
+const {{$cacheKey}}{{.Name}} = "{{.CacheKey}}"
+{{end}}
+
+type {{$storeName}} struct {
+	backend common.LingioStore
+	cache   {{$cacheInterface}}
+
+	ready atomicBool
 }
 
-func New{{.TypeName}}MinioDb(endpoint string, accessKeyID string, accessKeySecret string, token string, useHTTPS bool, useVersioning bool) (*{{.TypeName}}MinioDb, *common.Error) {
-	minioClient, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKeyID, accessKeySecret, token),
-		Secure: useHTTPS,
-	})
+type {{.TypeName}}Cache interface {
+	Ingest(<-chan {{.TypeName}}CacheIngest) *common.Error
+	Initialized() (bool, error)
+
+	// Primary key operations
+	Create(models.{{.DbTypeName}}, time.Duration, string) *common.Error
+	Put(models.{{.DbTypeName}}, time.Duration, string) *common.Error
+	Get(string) (*models.{{.DbTypeName}}, string, *common.Error)
+	Delete(string) *common.Error
+
+	// Secondary index operations
+	{{- range .SecondaryIndexes -}}
+	{{- if eq .Type "unique"}}
+	GetBy{{.Name}}(string) (*models.{{$modelName}}, string, *common.Error)
+	{{- else if eq .Type "set"}}
+	GetAllBy{{.Name}}(string) ([]models.{{$modelName}}, string, *common.Error)
+	{{- end -}}
+	{{end}}
+}
+
+// {{.PrivateTypeName}}CacheObject is the internally stored cached object.
+type {{.PrivateTypeName}}CacheObject struct {
+	ETag string
+	Entity models.{{.DbTypeName}}
+}
+
+// {{.TypeName}}CacheIngest is used during initialization to fill the cache with data from the backend.
+type {{.TypeName}}CacheIngest struct {
+	common.ObjectInfo
+	Entity models.{{.DbTypeName}}
+}
+
+// New{{$storeName}} configures a new store and initializes the provided cache if required.
+func New{{$storeName}}(mc *minio.Client, cache {{.TypeName}}Cache, serviceKey string) (*{{$storeName}}, error) {
+	// DefaultOjbectStoreConfig || deserialize
+	objectStore, err := common.NewObjectStore(mc, "{{.BucketName}}", common.DefaultObjectStoreConfig)
 	if err != nil {
-		return nil, common.NewErrorE(http.StatusInternalServerError, err).Str("error", err.Error()).Msg("failed to init min.io")
+		return nil, fmt.Errorf("creating object store: %w", err)
 	}
-	s3db := &{{.TypeName}}MinioDb{
-		c:          minioClient,
-		bucketName: "{{.BucketName}}",
-	}
-	err = s3db.initBucket(minioClient, useVersioning)
+
+	encryptedStore, err := common.NewEncryptedStore(objectStore, serviceKey)
 	if err != nil {
-		return nil, common.NewErrorE(http.StatusInternalServerError, err).Msg("failed to init bucket")
+		return nil, fmt.Errorf("creating encrypted store: %w", err)
 	}
-	return s3db, nil
+
+	db := &{{$storeName}}{
+		backend: encryptedStore,
+		cache:   cache,
+		ready:   0,
+	}
+
+	if err := db.initCache(); err != nil {
+		return nil, fmt.Errorf("initializing cache: %w", err)
+	}
+
+	return db, nil
 }
 
-func (db *{{.TypeName}}MinioDb) Get(partnerID string, id string) (*models.{{.DbTypeName}}, string, *common.Error) {
-	return db.getObject(db.filename(partnerID, id))
+// initCache will eagerly initialize the cache if cache isn't already initialized.
+func (ps *{{$storeName}}) initCache() (resulterr error) {
+	defer func() {
+		if resulterr == nil {
+			zl.Info().Str("component", "{{$storeName}}").Msg("cache initialized.")
+			ps.ready.setTrue()
+		}
+	}()
+
+	if ok, err := ps.cache.Initialized(); err != nil {
+		return fmt.Errorf("checking cache: %w", err)
+	} else if ok {
+		zl.Info().Str("component", "{{$storeName}}").Msg("cache found, assuming up-to-date.")
+		return nil
+	}
+
+	zl.Info().Str("component", "{{$storeName}}").Msg("no cache found, fetching all data...")
+
+	// Setup concurrent workers draining the object listing channel, fetching
+	// objects from the backend store and putting them into the cache.
+	const NUM_WORKERS = 15
+	listing := ps.backend.ListObjects()
+	errchan := make([]chan error, NUM_WORKERS)
+	objchan := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
+	quitnow := make(chan struct{})
+	for i := 0; i < NUM_WORKERS; i++ {
+		errchan[i] = make(chan error, 1)
+		go func(workerId int) {
+			defer close(errchan[workerId])
+			for {
+				select {
+				case <-quitnow:
+					// quit requested, on error from another worker
+					return
+				case req := <-listing:
+					data, info, err := ps.backend.GetObject(req.Key)
+					if err != nil {
+						errchan[workerId] <- fmt.Errorf("backend: %w", err)
+						return
+					}
+
+					var entity models.{{.DbTypeName}}
+					if err := json.Unmarshal(data, &entity); err != nil {
+						errchan[workerId] <- fmt.Errorf("unmarshalling: %w", err)
+						return
+					}
+
+					objchan <- {{.TypeName}}CacheIngest{
+						ObjectInfo: info,
+						Entity:     entity,
+					}
+				}
+			}
+		}(i)
+	}
+
+	// Return first worker error. If worker exits without error, it will simply close the channel.
+	// Will close objchan once all workers have exited, signalling cache.Ingest to exit.
+	go func() {
+		defer close(objchan)
+		for _, worker := range errchan {
+			if err := <-worker; err != nil && resulterr == nil {
+				resulterr = err
+				close(quitnow)
+			}
+		}
+	}()
+
+	// Drain object channel.
+	if err := ps.cache.Ingest(objchan); err != nil && resulterr == nil {
+		resulterr = err
+	}
+
+	return resulterr
 }
 
-func (db *{{.TypeName}}MinioDb) Create(partnerID string, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, *common.Error) {
+// filename map typed values to a string
+func (ps *{{$storeName}}) filename(id string) string {
+	return fmt.Sprintf("%s.json", id)
+}
+
+//=============================================================================
+// Lingio store implementation
+//=============================================================================
+
+// Create attempts to store the provided object in store.
+func (s *{{$storeName}}) Create(partnerID string, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, *common.Error) {
 	if obj.{{.IdName}} != "" {
 		// check that the object doesn't exist
-		o, _, err := db.Get(partnerID, obj.{{.IdName}})
+		o, _, err := s.Get(obj.{{.IdName}})
 		if err != nil && err.HttpStatusCode != http.StatusNotFound {
 			return nil, common.NewErrorE(http.StatusInternalServerError, err).
-				Str("partnerID", partnerID).Str("ID", obj.{{.IdName}}).Msg("failed query for object")
+				Str("ID", obj.{{.IdName}}).Msg("failed query for object")
 		}
 		if o != nil { // object exists!
 			return nil, common.NewError(http.StatusBadRequest).
-				Str("partnerID", partnerID).Str("ID", obj.{{.IdName}}).Msg("an object with this ID is already stored in the database")
+				Str("ID", obj.{{.IdName}}).Msg("an object with this ID is already stored in the database")
 		}
 	} else {
 		obj.{{.IdName}} = uuid.NewV4().String()
 	}
-	err := db.Put(partnerID, obj)
-	if err != nil {
+	if err := s.put(obj); err != nil {
 		return nil, err
 	}
 	return &obj, nil
 }
 
-func (db *{{.TypeName}}MinioDb) Put(partnerID string, obj models.{{.DbTypeName}}) *common.Error {
-	b, err := json.Marshal(obj)
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("partnerID", partnerID).Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
-	}
-	info, err := db.c.PutObject(context.Background(), db.bucketName, db.filename(partnerID, obj.{{.IdName}}), bytes.NewBuffer(b), int64(len(b)), minio.PutObjectOptions{
-		UserMetadata:            nil,
-		UserTags:                nil,
-		ContentType:             "application/json",
-		ContentEncoding:         "",
-		ContentDisposition:      "",
-		CacheControl:            "",
-		Mode:                    "",
-		RetainUntilDate:         time.Time{},
-		ServerSideEncryption:    nil,
-		NumThreads:              0,
-		StorageClass:            "",
-		WebsiteRedirectLocation: "",
-		PartSize:                0,
-		LegalHold:               "",
-		SendContentMd5:          false,
-		DisableMultipart:        false,
-	})
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("partnerID", partnerID).Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
-	}
 
-    return writePartnerBucketETag(db.c, db.bucketName, partnerID, info.ETag)
+// Get attempts to load an object with the specified ID from the store.
+func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
+	return s.cache.Get(id)
 }
 
-func (db *{{.TypeName}}MinioDb) Delete(partnerID string, id string) *common.Error {
-	err := db.c.RemoveObject(context.Background(), db.bucketName, db.filename(partnerID, id), minio.RemoveObjectOptions{
-		GovernanceBypass: false,
-		VersionID:        "",
-	})
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("partnerID", partnerID).Str("ID", id).Msg("failed to delete object in minio")
-	}
-	etag, lerr := getPartnerBucketETag(db.c, db.bucketName, partnerID)
-	if lerr != nil {
-		return common.NewErrorE(http.StatusInternalServerError, lerr).
-			Str("partnerID", partnerID).Str("ID", id).Msg("failed to delete object in minio because of etag issue")
-	}
-	etag = etag + "x"
-    return writePartnerBucketETag(db.c, db.bucketName, partnerID, etag)
+// Put updates or creates the object in both cache and backing store.
+func (s *{{$storeName}}) Put(obj models.{{.DbTypeName}}) *common.Error {
+	return s.put(obj)
 }
 
-func (db *{{.TypeName}}MinioDb) GetAllForPartner(partnerID string) ([]models.{{.DbTypeName}}, string, *common.Error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	objectCh := db.c.ListObjects(ctx, db.bucketName, minio.ListObjectsOptions{
-		Prefix:    partnerID,
-		Recursive: true,
-	})
-	objs := make([]models.{{.DbTypeName}}, 0)
-	for objInfo := range objectCh {
-		if objInfo.Err != nil {
-			return nil, "", common.NewErrorE(http.StatusInternalServerError, objInfo.Err).
-				Str("partnerID", partnerID).Msg("failed to list objects in minio")
+// put does the heavy lifting for both Put and Create methods.
+func (s *{{$storeName}}) put(obj models.{{.DbTypeName}}) *common.Error {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err).
+			Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
+	}
+	info, err := s.backend.PutObject(s.filename(obj.{{.IdName}}), data)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err).
+			Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
+	}
+
+	var expiration time.Duration
+	if !info.Expiration.IsZero() {
+		expiration = info.Expiration.Sub(time.Now())
+	}
+	return s.cache.Put(obj, expiration, info.ETag)
+}
+
+// Delete
+func (s *{{$storeName}}) Delete(id string) *common.Error {
+	if err := s.backend.DeleteObject(s.filename(id)); err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err).
+			Str("ID", id).Msg("failed to delete object in minio")
+	}
+	return s.cache.Delete(id)
+}
+
+//=============================================================================
+// Extra functions from secondary indexes, passes to cache layer
+//=============================================================================
+{{range .SecondaryIndexes -}}
+{{if eq .Type "unique"}}
+// GetBy{{.Name}} fetches a single {{$modelName}} by its {{.Key}}
+func (s *{{$storeName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, string, *common.Error) {
+	return s.cache.GetBy{{.Name}}(key)
+}
+{{else if eq .Type "set"}}
+// GetAllBy{{.Name}} fetches all {{$modelName}}s by their {{.Key}}
+func (s *{{$storeName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, *common.Error) {
+	return s.cache.GetAllBy{{.Name}}(key)
+}
+{{end -}}
+{{end}}
+//=============================================================================
+// Cache implementation
+//=============================================================================
+
+// {{$cacheName}} is a redis-backed implementation of {{$cacheInterface}}
+type {{$cacheName}} struct {
+	*common.RedisCache
+}
+
+// New{{$cacheName}} writes to leader and reads from follower.
+func New{{$cacheName}}(leaderHost string, followerHost string) *{{$cacheName}} {
+	return &{{$cacheName}}{
+		RedisCache: common.NewRedisCache(leaderHost, followerHost, "{{.BucketName}}", "{{.Version}}"),
+	}
+}
+
+// Initialized performs a greedy check if the cache is initialized.
+func (c {{$cacheName}}) Initialized() (bool, error) {
+	v, err := c.Follower.Exists(context.TODO(), c.initKey()).Result()
+	if err != nil {
+		return false, err
+	}
+	return v != 0, nil
+}
+
+// Ingest
+func (c *{{$cacheName}}) Ingest(entities <-chan {{.TypeName}}CacheIngest) *common.Error {
+	for x := range entities {
+		var expiration time.Duration
+		if !x.Expiration.IsZero() {
+			expiration = x.Expiration.Sub(time.Now())
 		}
-		m, _, lerr := db.getObject(objInfo.Key)
-		if lerr != nil {
-			return nil, "", lerr
-		}
-		objs = append(objs, *m)
-	}
-	etag, err := getPartnerBucketETag(db.c, db.bucketName, partnerID)
-	if err != nil {
-		return nil, "", err
-	}
-	return objs, etag, nil
-}
-
-func (db *{{.TypeName}}MinioDb) initBucket(mc *minio.Client, useVersioning bool) error {
-	exists, err := mc.BucketExists(context.Background(), db.bucketName)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		err = mc.MakeBucket(context.Background(), db.bucketName, minio.MakeBucketOptions{
-			ObjectLocking: false,
-		})
-		if err != nil {
+		if err := c.Put(x.Entity, expiration, x.ETag); err != nil {
 			return err
 		}
-		if useVersioning {
-			err = mc.EnableVersioning(context.Background(), db.bucketName)
+	}
+	c.warmedUp.setTrue()
+	return nil
+}
+
+func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration, etag string) *common.Error {
+
+	co := {{.PrivateTypeName}}CacheObject{
+		ETag:   etag,
+		Entity: obj,
+	}
+
+	// Fetch the previous version of this object (if there is any)
+	orig, _, lerr := c.Get(obj.{{.IdName}})
+	if lerr != nil && lerr.HttpStatusCode != http.StatusNotFound {
+		return lerr
+	}
+
+	// Primary index: {{.IdName}}
+	if lerr = c.put(c.key({{$cacheKey}}{{.IdName}}, obj.{{.IdName}}), co); lerr != nil {
+		return lerr
+	}
+
+	{{- /* Update unique secondary indexes */ -}}
+	{{range .SecondaryIndexes -}}
+	{{if eq .Type "unique"}}
+	{{if .Optional -}}
+	// Optional unique index: {{.Key}}
+	if obj.{{.Key}} != nil {
+		if lerr = c.put(c.key({{$cacheKey}}{{.Name}}, *obj.{{.Key}}), co); lerr != nil {
+			return lerr
+		}
+	}
+	{{else -}}
+	// Unique index: {{.Key}}
+	if lerr = c.put(c.key({{$cacheKey}}{{.Name}}, obj.{{.Key}}), co); lerr != nil {
+		return lerr
+	}
+	{{end -}}
+	{{end -}}
+	{{end}}
+
+	{{- /* Update aggregated secondary indexes */ -}}
+	{{range .SecondaryIndexes -}}
+	{{if eq .Type "set"}}
+	{{ if .Optional -}}
+	// Optional set index: {{.Key}}
+	if obj.{{.Key}} != nil {
+		c.Leader.SAdd(context.TODO(), c.key({{$cacheKey}}{{.Name}}, *obj.{{.Key}}), obj.{{$ID}})
+		err := c.Leader.Incr(context.TODO(), c.etagKey({{$cacheKey}}{{.Name}}, *obj.{{.Key}})).Err()
+		if err != nil {
+			return common.NewErrorE(http.StatusInternalServerError, err)
+		}
+	}
+	{{else -}}
+	// Set index: {{.Key}}
+	c.Leader.SAdd(context.TODO(), c.key({{$cacheKey}}{{.Name}}, obj.{{.Key}}), obj.{{$ID}})
+	err := c.Leader.Incr(context.TODO(), c.etagKey({{$cacheKey}}{{.Name}}, obj.{{.Key}})).Err()
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	{{end -}}
+	{{end -}}
+	{{end}}
+
+	{{- /* Remove old indexes if keys changed. */}}
+	// Delete old secondary indexes if they changed
+	if orig != nil {
+		{{range .SecondaryIndexes -}}
+		{{if eq .Type "unique" -}}
+		{{if .Optional -}}
+		if orig.{{.Key}} != nil && obj.{{.Key}} != nil && *orig.{{.Key}} != *obj.{{.Key}} {
+			err := c.Leader.Del(context.TODO(), c.key({{$cacheKey}}{{.Name}}, *orig.{{.Key}})).Err()
 			if err != nil {
-				return err
+				return common.NewErrorE(http.StatusInternalServerError, err)
 			}
 		}
+		{{- else -}}
+		if orig.{{.Key}} != obj.{{.Key}} {
+			err := c.Leader.Del(context.TODO(), c.key({{$cacheKey}}{{.Name}}, orig.{{.Key}})).Err()
+			if err != nil {
+				return common.NewErrorE(http.StatusInternalServerError, err)
+			}
+		}
+		{{end -}}
+		{{end -}}
+		{{end}}
+		{{- /* */ -}}
+		{{range .SecondaryIndexes -}}
+		{{if eq .Type "set"}}
+		{{ if .Optional -}}
+		if orig.{{.Key}} != nil && obj.{{.Key}} != nil && *orig.{{.Key}} != *obj.{{.Key}} {
+			c.Leader.SRem(context.TODO(), c.key({{$cacheKey}}{{.Name}}, *orig.{{.Key}}), orig.{{$ID}})
+			err := c.Leader.Incr(context.TODO(), c.etagKey({{$cacheKey}}{{.Name}}, *orig.{{.Key}})).Err()
+			if err != nil {
+				return common.NewErrorE(http.StatusInternalServerError, err)
+			}
+		}
+		{{- else -}}
+		if orig.{{.Key}} != obj.{{.Key}} {
+			c.Leader.SRem(context.TODO(), c.key({{$cacheKey}}{{.Name}}, orig.{{.Key}}), orig.{{$ID}})
+			err := c.Leader.Incr(context.TODO(), c.etagKey({{$cacheKey}}{{.Name}}, orig.{{.Key}})).Err()
+			if err != nil {
+				return common.NewErrorE(http.StatusInternalServerError, err)
+			}
+		}
+		{{end -}}
+		{{end -}}
+		{{end}}
 	}
 	return nil
 }
 
-func (db *{{.TypeName}}MinioDb) filename(partnerID string, id string) string {
-    {{ if .InclPartnerID }}
-	return fmt.Sprintf("%s-%s.json", partnerID, id)
-	{{ else }}
-	return fmt.Sprintf("%s.json", id)
-	{{ end }}
-}
 
-func (db *{{.TypeName}}MinioDb) toModel(o *minio.Object) (*models.{{.DbTypeName}}, *common.Error) {
-	b, err := ioutil.ReadAll(o)
+// Get a cached {{$modelName}} by it's {{.IdName}}
+func (c {{$cacheName}}) Get({{.IdName | ToLower}} string) (*models.{{.DbTypeName}}, string, *common.Error) {
+	return c.get({{$cacheKey}}ID, {{.IdName | ToLower}})
+}
+{{range .SecondaryIndexes -}}
+{{if eq .Type "unique"}}
+// GetBy{{.Name}} fetches a cached {{$modelName}} by its {{.Key}}
+func (c *{{$cacheName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, string, *common.Error) {
+	return c.get({{$cacheKey}}{{.Name}}, key)
+}
+{{else if eq .Type "set"}}
+// GetAllBy{{.Name}} fetches all cached {{$modelName}}s by their {{.Key}}
+func (c *{{$cacheName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, *common.Error) {
+	keys, err := c.Follower.SMembers(context.TODO(), c.key({{$cacheKey}}{{.Name}}, key)).Result()
 	if err != nil {
-		return nil, minioErrToCommonErr(err)
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
-	var target models.{{.DbTypeName}}
-	err = json.Unmarshal(b, &target)
+
+	objs := make([]models.{{$modelName}}, 0, 5)
+	for _, key := range keys {
+		obj, _, err := c.Get(key)
+		if err != nil {
+			return nil, "", err
+		}
+		objs = append(objs, *obj)
+	}
+
+	etag, err := c.Follower.Get(context.TODO(), c.etagKey({{$cacheKey}}{{.Name}}, key)).Result()
 	if err != nil {
-		return nil, common.NewErrorE(http.StatusInternalServerError, err).Msg("failed to unmarshal object")
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
-	return &target, nil
+	return objs, etag, nil
 }
-
-func (db *{{.TypeName}}MinioDb) getObject(filename string) (*models.{{.DbTypeName}}, string, *common.Error) {
-	o, err := db.c.GetObject(context.Background(), db.bucketName, filename, minio.GetObjectOptions{
-		ServerSideEncryption: nil,
-	})
-    if err != nil {
-        return nil, "", minioErrToCommonErr(err).Msg("failed to get object from min.io")
-    }
-
-    stat, err := o.Stat()
-    if err != nil {
-        return nil, "", minioErrToCommonErr(err).Msg("failed to get object info from min.io")
-    }
-
-    m, lerr := db.toModel(o)
-    if lerr != nil {
-        return nil, "", lerr
-    }
-    return m, stat.ETag, nil
-}
+{{end -}}
+{{end}}

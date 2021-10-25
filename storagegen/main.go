@@ -7,18 +7,26 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 	"text/template"
 
 	zl "github.com/rs/zerolog/log"
 )
 
 type BucketSpec struct {
-	TypeName      string
-	DbTypeName    string
-	BucketName    string
-	Template      string
-	IdName        *string
-	InclPartnerID *bool
+	TypeName         string
+	SecondaryIndexes []SecondaryIndex
+	DbTypeName       string
+	BucketName       string
+	Template         string
+	Version          string
+	IdName           *string
+	InclPartnerID    *bool
+}
+
+type SecondaryIndex struct {
+	Key, Type, Name, CacheKey string
+	Optional                  bool
 }
 
 type StorageSpec struct {
@@ -49,6 +57,7 @@ func main() {
 	dir := path.Dir(os.Args[1])
 
 	for _, b := range spec.Buckets {
+		privateTypeName := strings.ToLower(b.TypeName[0:1]) + b.TypeName[1:]
 		idName := "ID"
 		if b.IdName != nil {
 			idName = *b.IdName
@@ -57,15 +66,43 @@ func main() {
 		if b.InclPartnerID != nil {
 			inclPartnerID = *b.InclPartnerID
 		}
+		// Patch secondary index default values
+		for i, idx := range b.SecondaryIndexes {
+			switch idx.Type {
+			case "unique":
+				fallthrough
+			case "set":
+				break
+			default:
+				zl.Fatal().Msg("unknown index type: " + idx.Type)
+			}
+			// Ensure key is exported.
+			if idx.Key[0] >= 'a' && idx.Key[0] <= 'z' {
+				zl.Fatal().Msg("index key must not be private: " + idx.Key)
+			}
+			// Default value for name is key: e.g. Get<All?>ByEmail
+			if idx.Name == "" {
+				idx.Name = idx.Key
+			}
+			// Default cache key
+			idx.CacheKey = strings.ToLower(idx.Key[0:1]) + idx.Key[1:]
+			b.SecondaryIndexes[i] = idx
+		}
+		fmt.Println(b.BucketName, b.SecondaryIndexes)
 		bytes := generate("tmpl/"+b.Template, TmplParams{
-			ServiceName:   spec.ServiceName,
-			TypeName:      b.TypeName,
-			DbTypeName:    b.DbTypeName,
-			BucketName:    b.BucketName,
-			IdName:        idName,
-			InclPartnerID: inclPartnerID,
+			ServiceName:      spec.ServiceName,
+			TypeName:         b.TypeName,
+			PrivateTypeName:  privateTypeName,
+			DbTypeName:       b.DbTypeName,
+			BucketName:       b.BucketName,
+			SecondaryIndexes: b.SecondaryIndexes,
+			IdName:           idName,
+			Version:          b.Version,
+			InclPartnerID:    inclPartnerID,
 		})
-		err := ioutil.WriteFile(fmt.Sprintf("%s/%s.gen.go", dir, b.BucketName), bytes, 0644)
+		// go codeconv uses _ in filenames
+		filename := fmt.Sprintf("%s.gen.go", strings.Replace(b.BucketName, "-", "_", -1))
+		err := ioutil.WriteFile(path.Join(dir, filename), bytes, 0644)
 		if err != nil {
 			zl.Fatal().Str("err", err.Error()).Msg("failed to load minio template")
 		}
@@ -115,12 +152,15 @@ func readSpec(filename string) StorageSpec {
 }
 
 type TmplParams struct {
-	TypeName      string
-	DbTypeName    string
-	BucketName    string
-	ServiceName   string
-	IdName        string
-	InclPartnerID bool
+	TypeName         string
+	PrivateTypeName  string
+	DbTypeName       string
+	BucketName       string
+	ServiceName      string
+	IdName           string
+	Version          string
+	SecondaryIndexes []SecondaryIndex
+	InclPartnerID    bool
 }
 
 type TmplParams2 struct {
@@ -128,7 +168,17 @@ type TmplParams2 struct {
 }
 
 func generate(tmplFilename string, params interface{}) []byte {
-	tpl, err := template.ParseFiles(tmplFilename)
+	funcMap := template.FuncMap{
+		"ToUpper": strings.ToUpper,
+		"ToLower": strings.ToLower,
+	}
+	tpltxt, err := os.ReadFile(tmplFilename)
+	if err != nil {
+		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to read template")
+	}
+
+	// tpl, err := template.ParseFiles(tmplFilename)
+	tpl, err := template.New(path.Base(tmplFilename)).Funcs(funcMap).Parse(string(tpltxt))
 	if err != nil {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to load template")
 	} else if tpl == nil {
