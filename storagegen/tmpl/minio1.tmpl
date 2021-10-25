@@ -404,6 +404,20 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	return nil
 }
 
+func (c {{$cacheName}}) get(keyName string, key string) (*models.{{.DbTypeName}}, string, *common.Error) {
+	cmd := c.Leader.Get(context.TODO(), c.key(keyName, key))
+	data, err := cmd.Result()
+	if err != nil && err == redis.Nil {
+		return nil, "", common.NewErrorE(http.StatusNotFound, err)
+	} else if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	var co {{.PrivateTypeName}}CacheObject
+	if err := json.Unmarshal([]byte(data), &co); err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	return &co.Entity, co.ETag, nil
+}
 
 // Get a cached {{$modelName}} by it's {{.IdName}}
 func (c {{$cacheName}}) Get({{.IdName | ToLower}} string) (*models.{{.DbTypeName}}, string, *common.Error) {
@@ -440,3 +454,4 @@ func (c *{{$cacheName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}},
 }
 {{end -}}
 {{end}}
+
