@@ -51,6 +51,7 @@ func main() {
 	//typeName := "UserStartedClasses"
 	//dbTypeName := "UserStartedClasses"
 	//bucketName := "user-started-classes"
+	//fileName   := "user_started_classes.gen.go"
 
 	if len(os.Args) < 2 {
 		zl.Fatal().Msg("Usage: go run main.go <spec.json>")
