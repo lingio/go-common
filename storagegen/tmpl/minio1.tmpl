@@ -41,8 +41,7 @@ func init() {
 type {{$storeName}} struct {
 	backend common.LingioStore
 	cache   {{$cacheInterface}}
-
-	ready atomicBool
+	ready   common.AtomicBool
 }
 
 type {{.TypeName}}Cache interface {
