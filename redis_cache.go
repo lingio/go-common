@@ -13,7 +13,7 @@ type RedisCache struct {
 	Follower *redis.Client
 	Leader   *redis.Client
 
-	warmedUp AtomicBool
+	WarmedUp AtomicBool
 }
 
 func NewRedisCache(leaderHost, followerHost string, name, version string) *RedisCache {
@@ -34,7 +34,7 @@ func NewRedisCache(leaderHost, followerHost string, name, version string) *Redis
 		Name:     name,
 		Follower: follower,
 		Leader:   leader,
-		warmedUp: 0,
+		WarmedUp: 0,
 	}
 }
 
@@ -43,13 +43,13 @@ func NewRedisCache(leaderHost, followerHost string, name, version string) *Redis
 
 // Started indicates if the cache is warmed up.
 func (c RedisCache) Started() bool {
-	return c.warmedUp.IsSet()
+	return c.WarmedUp.IsSet()
 }
 
 // Ready indicates that the cache is warmed up and ready to serve requests.
 // No difference compared to Started() at this time.
 func (c RedisCache) Ready() bool {
-	return c.warmedUp.IsSet()
+	return c.WarmedUp.IsSet()
 }
 
 // Live indicates if the service is healthy.
@@ -69,22 +69,20 @@ func (c RedisCache) Live() bool {
 	return true
 }
 
-// Add more key functions as needed.
-
-// key returns the primary index key
-func (c RedisCache) key(keyName string, key string) string {
+// Key returns the primary index key
+func (c RedisCache) Key(keyName string, key string) string {
 	// Example: people.v1.o.id=p123
 	return c.Name + "." + c.Version + "." + keyName + "=" + key
 }
 
-// etagKey returns the secondary index etag key
-func (c RedisCache) etagKey(keyName, key string) string {
+// ETagKey returns the secondary index etag key
+func (c RedisCache) ETagKey(keyName, key string) string {
 	// Example: GetAllByPartner --> people.v1.etag.partnerID=nobina
 	return c.Name + "." + c.Version + ".etag" + "." + keyName + "=" + key
 }
 
-// initKey returns the key for checking and storing initialization status
-func (c RedisCache) initKey() string {
+// InitKey returns the key for checking and storing initialization status
+func (c RedisCache) InitKey() string {
 	// Example:  people.v1.initialized
 	return c.Name + "." + c.Version + ".initialized"
 }

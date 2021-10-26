@@ -11,6 +11,7 @@ import (
 
 	"github.com/lingio/go-common"
 	"github.com/minio/minio-go/v7"
+	"github.com/go-redis/redis/v8"
 	uuid "github.com/satori/go.uuid"
 
 	zl "github.com/rs/zerolog/log"
@@ -103,15 +104,15 @@ func New{{$storeName}}(mc *minio.Client, cache {{.TypeName}}Cache, serviceKey st
 }
 
 // initCache will eagerly initialize the cache if cache isn't already initialized.
-func (ps *{{$storeName}}) initCache() (resulterr error) {
+func (s *{{$storeName}}) initCache() (resulterr error) {
 	defer func() {
 		if resulterr == nil {
 			zl.Info().Str("component", "{{$storeName}}").Msg("cache initialized.")
-			ps.ready.SetTrue()
+			s.ready.SetTrue()
 		}
 	}()
 
-	if ok, err := ps.cache.Initialized(); err != nil {
+	if ok, err := s.cache.Initialized(); err != nil {
 		return fmt.Errorf("checking cache: %w", err)
 	} else if ok {
 		zl.Info().Str("component", "{{$storeName}}").Msg("cache found, assuming up-to-date.")
@@ -123,7 +124,7 @@ func (ps *{{$storeName}}) initCache() (resulterr error) {
 	// Setup concurrent workers draining the object listing channel, fetching
 	// objects from the backend store and putting them into the cache.
 	const NUM_WORKERS = 15
-	listing := ps.backend.ListObjects()
+	listing := s.backend.ListObjects()
 	errchan := make([]chan error, NUM_WORKERS)
 	objchan := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
 	quitnow := make(chan struct{})
@@ -137,7 +138,7 @@ func (ps *{{$storeName}}) initCache() (resulterr error) {
 					// quit requested, on error from another worker
 					return
 				case req := <-listing:
-					data, info, err := ps.backend.GetObject(req.Key)
+					data, info, err := s.backend.GetObject(req.Key)
 					if err != nil {
 						errchan[workerId] <- fmt.Errorf("backend: %w", err)
 						return
@@ -171,7 +172,7 @@ func (ps *{{$storeName}}) initCache() (resulterr error) {
 	}()
 
 	// Drain object channel.
-	if err := ps.cache.Ingest(objchan); err != nil && resulterr == nil {
+	if err := s.cache.Ingest(objchan); err != nil && resulterr == nil {
 		resulterr = err
 	}
 
@@ -179,7 +180,7 @@ func (ps *{{$storeName}}) initCache() (resulterr error) {
 }
 
 // filename map typed values to a string
-func (ps *{{$storeName}}) filename(id string) string {
+func (s *{{$storeName}}) filename(id string) string {
 	return fmt.Sprintf("%s.json", id)
 }
 
@@ -283,7 +284,7 @@ func New{{$cacheName}}(leaderHost string, followerHost string) *{{$cacheName}} {
 
 // Initialized performs a greedy check if the cache is initialized.
 func (c {{$cacheName}}) Initialized() (bool, error) {
-	v, err := c.Follower.Exists(context.TODO(), c.initKey()).Result()
+	v, err := c.Follower.Exists(context.TODO(), c.InitKey()).Result()
 	if err != nil {
 		return false, err
 	}
@@ -319,7 +320,7 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	}
 
 	// Primary index: {{.IdName}}
-	if lerr = c.put(c.key({{$cacheKey}}{{.IdName}}, obj.{{.IdName}}), co); lerr != nil {
+	if lerr = c.put(c.Key({{$cacheKey}}{{.IdName}}, obj.{{.IdName}}), co, expiration); lerr != nil {
 		return lerr
 	}
 
@@ -329,13 +330,13 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	{{if .Optional -}}
 	// Optional unique index: {{.Key}}
 	if obj.{{.Key}} != nil {
-		if lerr = c.put(c.key({{$cacheKey}}{{.Name}}, *obj.{{.Key}}), co); lerr != nil {
+		if lerr = c.put(c.Key({{$cacheKey}}{{.Name}}, *obj.{{.Key}}), co, expiration); lerr != nil {
 			return lerr
 		}
 	}
 	{{else -}}
 	// Unique index: {{.Key}}
-	if lerr = c.put(c.key({{$cacheKey}}{{.Name}}, obj.{{.Key}}), co); lerr != nil {
+	if lerr = c.put(c.Key({{$cacheKey}}{{.Name}}, obj.{{.Key}}), co, expiration); lerr != nil {
 		return lerr
 	}
 	{{end -}}
@@ -348,16 +349,16 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	{{ if .Optional -}}
 	// Optional set index: {{.Key}}
 	if obj.{{.Key}} != nil {
-		c.Leader.SAdd(context.TODO(), c.key({{$cacheKey}}{{.Name}}, *obj.{{.Key}}), obj.{{$ID}})
-		err := c.Leader.Incr(context.TODO(), c.etagKey({{$cacheKey}}{{.Name}}, *obj.{{.Key}})).Err()
+		c.Leader.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, *obj.{{.Key}}), obj.{{$ID}})
+		err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, *obj.{{.Key}})).Err()
 		if err != nil {
 			return common.NewErrorE(http.StatusInternalServerError, err)
 		}
 	}
 	{{else -}}
 	// Set index: {{.Key}}
-	c.Leader.SAdd(context.TODO(), c.key({{$cacheKey}}{{.Name}}, obj.{{.Key}}), obj.{{$ID}})
-	err := c.Leader.Incr(context.TODO(), c.etagKey({{$cacheKey}}{{.Name}}, obj.{{.Key}})).Err()
+	c.Leader.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, obj.{{.Key}}), obj.{{$ID}})
+	err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, obj.{{.Key}})).Err()
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
@@ -372,14 +373,14 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{if eq .Type "unique" -}}
 		{{if .Optional -}}
 		if orig.{{.Key}} != nil && obj.{{.Key}} != nil && *orig.{{.Key}} != *obj.{{.Key}} {
-			err := c.Leader.Del(context.TODO(), c.key({{$cacheKey}}{{.Name}}, *orig.{{.Key}})).Err()
+			err := c.Leader.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, *orig.{{.Key}})).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
 			}
 		}
 		{{- else -}}
 		if orig.{{.Key}} != obj.{{.Key}} {
-			err := c.Leader.Del(context.TODO(), c.key({{$cacheKey}}{{.Name}}, orig.{{.Key}})).Err()
+			err := c.Leader.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, orig.{{.Key}})).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
 			}
@@ -392,16 +393,16 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{if eq .Type "set"}}
 		{{ if .Optional -}}
 		if orig.{{.Key}} != nil && obj.{{.Key}} != nil && *orig.{{.Key}} != *obj.{{.Key}} {
-			c.Leader.SRem(context.TODO(), c.key({{$cacheKey}}{{.Name}}, *orig.{{.Key}}), orig.{{$ID}})
-			err := c.Leader.Incr(context.TODO(), c.etagKey({{$cacheKey}}{{.Name}}, *orig.{{.Key}})).Err()
+			c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, *orig.{{.Key}}), orig.{{$ID}})
+			err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, *orig.{{.Key}})).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
 			}
 		}
 		{{- else -}}
 		if orig.{{.Key}} != obj.{{.Key}} {
-			c.Leader.SRem(context.TODO(), c.key({{$cacheKey}}{{.Name}}, orig.{{.Key}}), orig.{{$ID}})
-			err := c.Leader.Incr(context.TODO(), c.etagKey({{$cacheKey}}{{.Name}}, orig.{{.Key}})).Err()
+			c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, orig.{{.Key}}), orig.{{$ID}})
+			err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, orig.{{.Key}})).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
 			}
@@ -413,8 +414,20 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	return nil
 }
 
+func (c {{$cacheName}}) put(fullKey string, co {{.PrivateTypeName}}CacheObject, expiration time.Duration) *common.Error {
+	data, err := json.Marshal(co)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	cmd := c.Leader.Set(context.TODO(), fullKey, data, expiration)
+	if _, err := cmd.Result(); err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	return nil
+}
+
 func (c {{$cacheName}}) get(keyName string, key string) (*models.{{.DbTypeName}}, string, *common.Error) {
-	cmd := c.Leader.Get(context.TODO(), c.key(keyName, key))
+	cmd := c.Leader.Get(context.TODO(), c.Key(keyName, key))
 	data, err := cmd.Result()
 	if err != nil && err == redis.Nil {
 		return nil, "", common.NewErrorE(http.StatusNotFound, err)
@@ -441,7 +454,7 @@ func (c *{{$cacheName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, str
 {{else if eq .Type "set"}}
 // GetAllBy{{.Name}} fetches all cached {{$modelName}}s by their {{.Key}}
 func (c *{{$cacheName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, *common.Error) {
-	keys, err := c.Follower.SMembers(context.TODO(), c.key({{$cacheKey}}{{.Name}}, key)).Result()
+	keys, err := c.Follower.SMembers(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, key)).Result()
 	if err != nil {
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
@@ -455,7 +468,7 @@ func (c *{{$cacheName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}},
 		objs = append(objs, *obj)
 	}
 
-	etag, err := c.Follower.Get(context.TODO(), c.etagKey({{$cacheKey}}{{.Name}}, key)).Result()
+	etag, err := c.Follower.Get(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, key)).Result()
 	if err != nil {
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
