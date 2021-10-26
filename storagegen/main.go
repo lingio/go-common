@@ -102,7 +102,7 @@ func main() {
 			idx.CacheKey = strings.ToLower(idx.Key[0:1]) + idx.Key[1:]
 			b.SecondaryIndexes[i] = idx
 		}
-		fmt.Println(b.BucketName, b.SecondaryIndexes)
+
 		bytes := generate("tmpl/"+b.Template, TmplParams{
 			ServiceName:      spec.ServiceName,
 			TypeName:         b.TypeName,
@@ -115,6 +115,7 @@ func main() {
 			InclPartnerID:    inclPartnerID,
 			Config:           config,
 		})
+
 		// go codeconv uses _ in filenames
 		filename := fmt.Sprintf("%s.gen.go", strings.Replace(b.BucketName, "-", "_", -1))
 		err := ioutil.WriteFile(path.Join(dir, filename), bytes, 0644)
