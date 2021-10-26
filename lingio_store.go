@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 
@@ -17,8 +18,8 @@ func (b *AtomicBool) setFalse()   { atomic.StoreInt32((*int32)(b), 0) }
 // LingioStore is a simple file-based CRUD database interface.
 type LingioStore interface {
 	GetObject(file string) ([]byte, ObjectInfo, error)
-	PutObject(file string, data []byte) (ObjectInfo, error)
-	DeleteObject(file string) error
+	PutObject(ctx context.Context, file string, data []byte) (ObjectInfo, error)
+	DeleteObject(ctx context.Context, file string) error
 	ListObjects() <-chan ObjectInfo
 }
 

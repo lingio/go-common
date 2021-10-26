@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/base32"
@@ -45,9 +46,9 @@ func (es *EncryptedStore) GetObject(file string) ([]byte, ObjectInfo, error) {
 	return data, info, nil
 }
 
-func (es *EncryptedStore) PutObject(file string, data []byte) (ObjectInfo, error) {
+func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byte) (ObjectInfo, error) {
 	es.cipher.Encrypt(data, data)
-	info, err := es.backend.PutObject(es.encryptFilename(file), data)
+	info, err := es.backend.PutObject(ctx, es.encryptFilename(file), data)
 	if err != nil {
 		return ObjectInfo{}, err
 	}
@@ -55,8 +56,8 @@ func (es *EncryptedStore) PutObject(file string, data []byte) (ObjectInfo, error
 	return info, nil
 }
 
-func (es EncryptedStore) DeleteObject(file string) error {
-	return es.backend.DeleteObject(es.encryptFilename(file))
+func (es EncryptedStore) DeleteObject(ctx context.Context, file string) error {
+	return es.backend.DeleteObject(ctx, es.encryptFilename(file))
 }
 
 func (es EncryptedStore) ListObjects() <-chan ObjectInfo {
