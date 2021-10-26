@@ -50,7 +50,6 @@ type {{.TypeName}}Cache interface {
 	Initialized() (bool, error)
 
 	// Primary key operations
-	Create(models.{{.DbTypeName}}, time.Duration, string) *common.Error
 	Put(models.{{.DbTypeName}}, time.Duration, string) *common.Error
 	Get(string) (*models.{{.DbTypeName}}, string, *common.Error)
 	Delete(string) *common.Error
@@ -302,7 +301,7 @@ func (c *{{$cacheName}}) Ingest(entities <-chan {{.TypeName}}CacheIngest) *commo
 			return err
 		}
 	}
-	c.warmedUp.SetTrue()
+	c.WarmedUp.SetTrue()
 	return nil
 }
 
@@ -477,3 +476,49 @@ func (c *{{$cacheName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}},
 {{end -}}
 {{end}}
 
+func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
+	o, _, lerr := c.Get({{$ID | ToLower}})
+	if lerr != nil {
+		return lerr
+	}
+
+	// Delete ID-cache
+	var err error
+	keys := []string{c.Key({{$cacheKey}}{{$ID}}, {{$ID | ToLower}})}
+	{{range .SecondaryIndexes -}}
+	{{if .Optional}}
+	if o.{{.Key}} != nil {
+		keys = append(keys, c.Key({{$cacheKey}}{{.Name}}, *o.{{.Key}}))
+	}
+	{{else}}
+	keys = append(keys, c.Key({{$cacheKey}}{{.Name}}, o.{{.Key}}))
+	{{end -}}
+	{{end}}
+
+	err = c.Leader.Del(context.TODO(), keys...).Err()
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+
+	{{range .SecondaryIndexes -}}
+	{{if eq .Type "set"}}
+	{{ if .Optional -}}
+	if o.{{.Key}} != nil {
+		c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, *o.{{.Key}}), o.{{$ID}})
+		err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, *o.{{.Key}})).Err()
+		if err != nil {
+			return common.NewErrorE(http.StatusInternalServerError, err)
+		}
+	}
+	{{- else -}}
+	c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, o.{{.Key}}), o.{{$ID}})
+	err = c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, o.{{.Key}})).Err()
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	{{end -}}
+	{{end -}}
+	{{end}}
+
+	return nil
+}
