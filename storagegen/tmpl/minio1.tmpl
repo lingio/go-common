@@ -107,7 +107,7 @@ func (ps *{{$storeName}}) initCache() (resulterr error) {
 	defer func() {
 		if resulterr == nil {
 			zl.Info().Str("component", "{{$storeName}}").Msg("cache initialized.")
-			ps.ready.setTrue()
+			ps.ready.SetTrue()
 		}
 	}()
 
@@ -301,7 +301,7 @@ func (c *{{$cacheName}}) Ingest(entities <-chan {{.TypeName}}CacheIngest) *commo
 			return err
 		}
 	}
-	c.warmedUp.setTrue()
+	c.warmedUp.SetTrue()
 	return nil
 }
 

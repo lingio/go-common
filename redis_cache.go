@@ -43,13 +43,13 @@ func NewRedisCache(leaderHost, followerHost string, name, version string) *Redis
 
 // Started indicates if the cache is warmed up.
 func (c RedisCache) Started() bool {
-	return c.warmedUp.isSet()
+	return c.warmedUp.IsSet()
 }
 
 // Ready indicates that the cache is warmed up and ready to serve requests.
 // No difference compared to Started() at this time.
 func (c RedisCache) Ready() bool {
-	return c.warmedUp.isSet()
+	return c.warmedUp.IsSet()
 }
 
 // Live indicates if the service is healthy.
