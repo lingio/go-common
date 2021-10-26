@@ -6,7 +6,7 @@ go-common
 2. `go run . ../../partner-service/storage/spec.json`
 
 **spec.json**:
-```json
+```javascript
 {
   "serviceName": "person-service",
   "buckets": [
