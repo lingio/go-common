@@ -1,0 +1,105 @@
+package storage
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"encoding/json"
+
+	"github.com/lingio/person-service/models"
+
+	"github.com/lingio/go-common"
+	"github.com/minio/minio-go/v7"
+	uuid "github.com/satori/go.uuid"
+)
+
+{{$storeName := printf "%sStore" .TypeName -}}
+
+var {{$storeName}}Config common.ObjectStoreConfig
+
+func init() {
+	err := json.Unmarshal([]byte(`
+{{.Config | PrettyPrint}}
+	`), &{{$storeName}}Config)
+	if err != nil {
+		panic(fmt.Errorf("error parsing store config: %w", err))
+	}
+}
+
+type {{$storeName}} struct {
+	backend common.LingioStore
+}
+
+// New{{$storeName}} configures a new store and initializes the provided cache if required.
+func New{{$storeName}}(mc *minio.Client, serviceKey string) (*{{$storeName}}, error) {
+	// DefaultOjbectStoreConfig || deserialize
+	objectStore, err := common.NewObjectStore(mc, "{{.BucketName}}", {{$storeName}}Config)
+	if err != nil {
+		return nil, fmt.Errorf("creating object store: %w", err)
+	}
+
+	encryptedStore, err := common.NewEncryptedStore(objectStore, serviceKey)
+	if err != nil {
+		return nil, fmt.Errorf("creating encrypted store: %w", err)
+	}
+
+	db := &{{$storeName}}{
+		backend: encryptedStore,
+	}
+
+	return db, nil
+}
+
+// filename map typed values to a string
+func (ps *{{$storeName}}) filename(id string) string {
+	return fmt.Sprintf("%s.json", id)
+}
+
+//=============================================================================
+// Lingio store implementation
+//=============================================================================
+
+// Create attempts to store the provided byte blob in store.
+func (s *{{$storeName}}) Create(ctx context.Context, blob models.{{.DbTypeName}}) (*string, *common.Error) {
+	id := uuid.NewV4().String()
+	if err := s.put(ctx, id, blob); err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+
+// Get attempts to load an byte blob with the specified ID from the store.
+func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
+	data, info, err := s.backend.GetObject(id)
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err).
+			Str("ID", id).Msg("failed to get from minio")
+	}
+	return (*models.{{.DbTypeName}})(&data), info.ETag, nil
+}
+
+// Put updates or creates the byte blob in both cache backing store.
+func (s *{{$storeName}}) Put(ctx context.Context, id string, blob models.{{.DbTypeName}}) *common.Error {
+	return s.put(ctx, id, blob)
+}
+
+// put does the heavy lifting for both Put and Create methods.
+func (s *{{$storeName}}) put(ctx context.Context, id string, blob models.{{.DbTypeName}}) *common.Error {
+	_, err := s.backend.PutObject(ctx, s.filename(id), blob)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err).
+			Str("ID", id).Msg("failed to write to minio")
+	}
+	return nil
+}
+
+// Delete
+func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
+	if err := s.backend.DeleteObject(ctx, s.filename(id)); err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err).
+			Str("ID", id).Msg("failed to delete object in minio")
+	}
+	return nil
+}
+
