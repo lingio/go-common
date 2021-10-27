@@ -20,6 +20,16 @@ import (
 {{$ID := .IdName -}}
 {{$storeName := printf "%sStore" .TypeName -}}
 
+var {{$storeName}}Config common.ObjectStoreConfig
+func init() {
+	err := json.Unmarshal([]byte(`
+{{.Config | PrettyPrint}}
+	`), &{{$storeName}}Config)
+	if err != nil {
+		panic(fmt.Errorf("error parsing store config: %w", err))
+	}
+}
+
 type {{$storeName}} struct {
 	backend common.LingioStore
 }
@@ -27,7 +37,7 @@ type {{$storeName}} struct {
 // New{{$storeName}} configures a new store and initializes the provided cache if required.
 func New{{$storeName}}(mc *minio.Client, serviceKey string) (*{{$storeName}}, error) {
 	// DefaultOjbectStoreConfig || deserialize
-	objectStore, err := common.NewObjectStore(mc, "{{.BucketName}}", common.DefaultObjectStoreConfig)
+	objectStore, err := common.NewObjectStore(mc, "{{.BucketName}}", {{$storeName}}Config)
 	if err != nil {
 		return nil, fmt.Errorf("creating object store: %w", err)
 	}
@@ -80,12 +90,12 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
 	data, info, err := s.backend.GetObject(id)
 	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", id).Msg("failed to get from minio")
 	}
 	obj := &models.{{.DbTypeName}}{}
 	if err := json.Unmarshal(data, &obj); err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", id).Msg("failed to unmarshal json")
 	}
 	return obj, info.ETag, nil

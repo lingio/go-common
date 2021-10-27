@@ -319,7 +319,7 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	}
 
 	// Primary index: {{.IdName}}
-	if lerr = c.put(c.Key({{$cacheKey}}{{.IdName}}, obj.{{.IdName}}), co, expiration); lerr != nil {
+	if lerr = c.put(c.Key({{$cacheKey}}ID, obj.{{.IdName}}), co, expiration); lerr != nil {
 		return lerr
 	}
 
@@ -477,14 +477,18 @@ func (c *{{$cacheName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}},
 {{end}}
 
 func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
+	{{if .SecondaryIndexes -}}
 	o, _, lerr := c.Get({{$ID | ToLower}})
+	{{else -}}
+	_, _, lerr := c.Get({{$ID | ToLower}})
+	{{end -}}
 	if lerr != nil {
 		return lerr
 	}
 
 	// Delete ID-cache
 	var err error
-	keys := []string{c.Key({{$cacheKey}}{{$ID}}, {{$ID | ToLower}})}
+	keys := []string{c.Key({{$cacheKey}}ID, {{$ID | ToLower}})}
 	{{range .SecondaryIndexes -}}
 	{{if .Optional}}
 	if o.{{.Key}} != nil {
