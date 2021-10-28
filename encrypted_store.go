@@ -75,6 +75,9 @@ func (es EncryptedStore) ListObjects() <-chan ObjectInfo {
 
 func (es *EncryptedStore) encryptFilename(file string) string {
 	tmp := []byte(file)
+	if len(tmp) < 16 {
+		panic(fmt.Errorf("%s: file length < 16 bytes", file))
+	}
 	es.cipher.Encrypt(tmp, tmp)
 	return base32.StdEncoding.EncodeToString(tmp)
 }
