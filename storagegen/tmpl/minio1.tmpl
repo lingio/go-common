@@ -136,7 +136,10 @@ func (s *{{$storeName}}) initCache() (resulterr error) {
 				case <-quitnow:
 					// quit requested, on error from another worker
 					return
-				case req := <-listing:
+				case req, more := <-listing:
+					if !more {
+						return
+					}
 					data, info, err := s.backend.GetObject(req.Key)
 					if err != nil {
 						errchan[workerId] <- fmt.Errorf("backend: %w", err)
