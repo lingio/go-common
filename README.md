@@ -46,3 +46,31 @@ go-common
   ]
 }
 ```
+
+
+## scripts
+
+- `script/objcopy`: read/write objects from/to bucket from one s3 endpoint
+  > `MINIO_SECRET=xyz go run ./script/objcopy --from=path/to/{stage|local|local-stage}.json --bucket=xyz`
+- `script/encrypt`: encrypt or decrypt plaintext objects on stdin
+  > `ENCRYPTION_KEY=256bitkey go run ./script/encrypt`
+- `script/fromfile`: read filenames from stdin and write object to stdout
+- `script/tofile`: read objects from stdin and write files
+
+##### Write plaintext objects to disk from an encrypted object storage
+
+```bash
+# assuming encrypted bucket
+$ MINIO_SECRET=minioadmin go run ./script/objcopy --from=../service/config/local-stage.json --bucket=people | \
+ENCRYPTION_KEY=256bit-key go run ./script/encrypt --decrypt | \
+go run ./script/tofile --root=./files
+```
+
+##### Write encrypted objects to an encrypted object storage from disk
+
+```bash
+# assuming encrypted bucket
+$ ls -1 ./files | gp run ./script/fromfile | \
+ENCRYPTION_KEY=256bit-key go run ./script/encrypt | \
+MINIO_SECRET=minioadmin go run ./script/objcopy --to=../service/config/local-stage.json
+```
