@@ -60,8 +60,8 @@ func (es EncryptedStore) DeleteObject(ctx context.Context, file string) error {
 	return es.backend.DeleteObject(ctx, es.encryptFilename(file))
 }
 
-func (es EncryptedStore) ListObjects() <-chan ObjectInfo {
-	listing := es.backend.ListObjects()
+func (es EncryptedStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
+	listing := es.backend.ListObjects(ctx)
 	objects := make(chan ObjectInfo, 10)
 	go func() {
 		defer close(objects)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"sync"
 
 	"github.com/lingio/person-service/models"
 
@@ -46,8 +47,9 @@ type {{$storeName}} struct {
 }
 
 type {{.TypeName}}Cache interface {
-	Ingest(<-chan {{.TypeName}}CacheIngest) *common.Error
 	Initialized() (bool, error)
+	AcquireInitLock(context.Context) error
+	ReleaseInitLock(context.Context) error
 
 	// Primary key operations
 	Put(models.{{.DbTypeName}}, time.Duration, string) *common.Error
@@ -74,6 +76,7 @@ type {{.PrivateTypeName}}CacheObject struct {
 type {{.TypeName}}CacheIngest struct {
 	common.ObjectInfo
 	Entity models.{{.DbTypeName}}
+	Err error
 }
 
 // New{{$storeName}} configures a new store and initializes the provided cache if required.
@@ -102,6 +105,8 @@ func New{{$storeName}}(mc *minio.Client, cache {{.TypeName}}Cache, serviceKey st
 	return db, nil
 }
 
+
+
 // initCache will eagerly initialize the cache if cache isn't already initialized.
 func (s *{{$storeName}}) initCache() (resulterr error) {
 	defer func() {
@@ -111,74 +116,129 @@ func (s *{{$storeName}}) initCache() (resulterr error) {
 		}
 	}()
 
-	if ok, err := s.cache.Initialized(); err != nil {
-		return fmt.Errorf("checking cache: %w", err)
-	} else if ok {
-		zl.Info().Str("component", "{{$storeName}}").Msg("cache found, assuming up-to-date.")
-		return nil
-	}
+	for {
+		if ok, err := s.cache.Initialized(); err != nil {
+			return fmt.Errorf("checking cache: %w", err)
+		} else if ok {
+			zl.Info().Str("component", "{{$storeName}}").Msg("cache found, assuming up-to-date.")
+			return nil
+		}
 
-	zl.Info().Str("component", "{{$storeName}}").Msg("no cache found, fetching all data...")
+		// All concurrent processes will exit before or when this context completes.
+		ctx, cancel := context.WithCancel(context.Background())
 
-	// Setup concurrent workers draining the object listing channel, fetching
-	// objects from the backend store and putting them into the cache.
-	const NUM_WORKERS = 15
-	listing := s.backend.ListObjects()
-	errchan := make([]chan error, NUM_WORKERS)
-	objchan := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
-	quitnow := make(chan struct{})
-	for i := 0; i < NUM_WORKERS; i++ {
-		errchan[i] = make(chan error, 1)
-		go func(workerId int) {
-			defer close(errchan[workerId])
-			for {
-				select {
-				case <-quitnow:
-					// quit requested, on error from another worker
-					return
-				case req, more := <-listing:
-					if !more {
+		if err := s.cache.AcquireInitLock(ctx); err != nil {
+			zl.Info().Str("component", "{{$storeName}}").Msg("no cache found, but could not acquire lock. retrying in 5s...")
+			time.Sleep(5*time.Second)
+			continue
+		}
+
+
+		zl.Info().Str("component", "{{$storeName}}").Msg("no cache found, lock acquired, now fetching all data...")
+
+		defer cancel()
+
+		const NUM_WORKERS = 15
+
+		listing := s.backend.ListObjects(ctx)
+		// workerout is closed by worker pool process
+		workerout := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
+		// initobj is closed by main control loop
+		cacheinit := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
+
+		// Launch worker process.
+		var wg sync.WaitGroup
+		wg.Add(NUM_WORKERS)
+		go func() {
+			defer close(workerout)
+
+			worker := func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-ctx.Done():
 						return
-					}
-					data, info, err := s.backend.GetObject(req.Key)
-					if err != nil {
-						errchan[workerId] <- fmt.Errorf("backend: %w", err)
-						return
-					}
+					case req, more := <-listing:
+						if !more {
+							return
+						}
 
-					var entity models.{{.DbTypeName}}
-					if err := json.Unmarshal(data, &entity); err != nil {
-						errchan[workerId] <- fmt.Errorf("unmarshalling: %w", err)
-						return
-					}
+						data, info, err := s.backend.GetObject(req.Key)
+						if err != nil {
+							workerout <- {{.TypeName}}CacheIngest{
+								ObjectInfo: common.ObjectInfo{},
+								Entity:     models.{{.DbTypeName}}{},
+								Err: 		fmt.Errorf("backend: %w", err),
+							}
+							return
+						}
 
-					objchan <- {{.TypeName}}CacheIngest{
-						ObjectInfo: info,
-						Entity:     entity,
+						var entity models.{{.DbTypeName}}
+						if err := json.Unmarshal(data, &entity); err != nil {
+							workerout <- {{.TypeName}}CacheIngest{
+								ObjectInfo: common.ObjectInfo{},
+								Entity:     models.{{.DbTypeName}}{},
+								Err: 		fmt.Errorf("unmarshalling: %w", err),
+							}
+							return
+						}
+
+						workerout <- {{.TypeName}}CacheIngest{
+							ObjectInfo: info,
+							Entity:     entity,
+							Err: 		nil,
+						}
 					}
 				}
 			}
-		}(i)
-	}
 
-	// Return first worker error. If worker exits without error, it will simply close the channel.
-	// Will close objchan once all workers have exited, signalling cache.Ingest to exit.
-	go func() {
-		defer close(objchan)
-		for _, worker := range errchan {
-			if err := <-worker; err != nil && resulterr == nil {
-				resulterr = err
-				close(quitnow)
+			for i := 0; i < NUM_WORKERS; i++ {
+				go worker()
+			}
+			wg.Wait()
+		}()
+
+		// Main control loop: will periodically refresh the cache lock and check
+		// for errors in bucket reading.
+		ticker := time.NewTicker(3*time.Second)
+		main_control_loop:
+		for {
+			select {
+			case <-ticker.C:
+				if err := s.cache.AcquireInitLock(ctx); err != nil {
+					resulterr = err
+					break main_control_loop
+				}
+			case obj, more := <-workerout:
+				if !more {
+					break main_control_loop
+				}
+				if obj.Err != nil {
+					resulterr = obj.Err
+					break main_control_loop
+				}
+				var expiration time.Duration
+				if !obj.Expiration.IsZero() {
+					expiration = obj.Expiration.Sub(time.Now())
+				}
+				if err := s.cache.Put(obj.Entity, expiration, obj.ETag); err != nil {
+					resulterr = err
+					break main_control_loop
+				}
 			}
 		}
-	}()
+		ticker.Stop()
+		close(cacheinit)
 
-	// Drain object channel.
-	if err := s.cache.Ingest(objchan); err != nil && resulterr == nil {
-		resulterr = err
+		if err := s.cache.ReleaseInitLock(ctx); err != nil && resulterr == nil {
+			resulterr = err
+		}
+
+		// returning will cancel the ctx, which will also cancel listing and workers
+		return resulterr
 	}
 
-	return resulterr
+	//unreachable!
 }
 
 // filename map typed values to a string
@@ -291,21 +351,6 @@ func (c {{$cacheName}}) Initialized() (bool, error) {
 		return false, err
 	}
 	return v != 0, nil
-}
-
-// Ingest
-func (c *{{$cacheName}}) Ingest(entities <-chan {{.TypeName}}CacheIngest) *common.Error {
-	for x := range entities {
-		var expiration time.Duration
-		if !x.Expiration.IsZero() {
-			expiration = x.Expiration.Sub(time.Now())
-		}
-		if err := c.Put(x.Entity, expiration, x.ETag); err != nil {
-			return err
-		}
-	}
-	c.WarmedUp.SetTrue()
-	return nil
 }
 
 func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration, etag string) *common.Error {

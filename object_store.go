@@ -67,7 +67,7 @@ func (os ObjectStore) GetObject(file string) ([]byte, ObjectInfo, error) {
 // PutObject uploads the object with pre-configured content type and content disposition.
 func (os ObjectStore) PutObject(ctx context.Context, file string, data []byte) (_ ObjectInfo, diderr error) {
 	defer os.auditLog(ctx, "Put", file, diderr)
-	info, err := os.mc.PutObject(context.Background(), os.bucketName, file, bytes.NewBuffer(data), int64(len(data)), minio.PutObjectOptions{
+	info, err := os.mc.PutObject(ctx, os.bucketName, file, bytes.NewBuffer(data), int64(len(data)), minio.PutObjectOptions{
 		ContentType:        os.config.ContentType,
 		ContentDisposition: os.config.ContentDisposition,
 		// NOTE: Also add support for ContentEncoding ?
@@ -85,7 +85,7 @@ func (os ObjectStore) PutObject(ctx context.Context, file string, data []byte) (
 // DeleteObject will attempt to remove the requested file/object.
 func (os ObjectStore) DeleteObject(ctx context.Context, file string) (diderr error) {
 	defer os.auditLog(ctx, "Delete", file, diderr)
-	err := os.mc.RemoveObject(context.Background(), os.bucketName, file, minio.RemoveObjectOptions{
+	err := os.mc.RemoveObject(ctx, os.bucketName, file, minio.RemoveObjectOptions{
 		// TODO: add support for VersionID ?
 	})
 	if err != nil {
@@ -95,8 +95,8 @@ func (os ObjectStore) DeleteObject(ctx context.Context, file string) (diderr err
 }
 
 // ListObjects performs a recursive object listing.
-func (os ObjectStore) ListObjects() <-chan ObjectInfo {
-	listing := os.mc.ListObjects(context.Background(), os.bucketName, minio.ListObjectsOptions{
+func (os ObjectStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
+	listing := os.mc.ListObjects(ctx, os.bucketName, minio.ListObjectsOptions{
 		Recursive: true,
 		// add support for WithVersions ?
 	})

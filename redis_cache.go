@@ -2,8 +2,12 @@ package common
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/go-redsync/redsync/v4"
+	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
 )
 
 // RedisCache is a versioned,
@@ -12,8 +16,10 @@ type RedisCache struct {
 	Name     string
 	Follower *redis.Client
 	Leader   *redis.Client
-
 	WarmedUp AtomicBool
+
+	rs       *redsync.Redsync
+	initLock *redsync.Mutex
 }
 
 func NewRedisCache(leaderHost, followerHost string, name, version string) *RedisCache {
@@ -29,12 +35,16 @@ func NewRedisCache(leaderHost, followerHost string, name, version string) *Redis
 		DB:       0,
 	})
 
+	rs := redsync.New(goredis.NewPool(leader))
+
 	return &RedisCache{
 		Version:  version,
 		Name:     name,
 		Follower: follower,
 		Leader:   leader,
 		WarmedUp: 0,
+		rs:       rs,
+		initLock: rs.NewMutex(name+"."+version+".initializing", redsync.WithExpiry(10*time.Second)),
 	}
 }
 
@@ -71,7 +81,7 @@ func (c RedisCache) Live() bool {
 
 // Key returns the primary index key
 func (c RedisCache) Key(keyName string, key string) string {
-	// Example: people.v1.o.id=p123
+	// Example: people.v1.id=p123
 	return c.Name + "." + c.Version + "." + keyName + "=" + key
 }
 
@@ -85,4 +95,38 @@ func (c RedisCache) ETagKey(keyName, key string) string {
 func (c RedisCache) InitKey() string {
 	// Example:  people.v1.initialized
 	return c.Name + "." + c.Version + ".initialized"
+}
+
+// Initialized performs a greedy check if the cache is initialized.
+func (c RedisCache) Initialized() (bool, error) {
+	v, err := c.Follower.Exists(context.TODO(), c.InitKey()).Result()
+	if err != nil {
+		return false, err
+	}
+	return v != 0, nil
+}
+
+// AcquireInitLock attempts to either lock or extend the currently existing init lock.
+func (c RedisCache) AcquireInitLock(ctx context.Context) error {
+	if c.initLock.Until().IsZero() || c.initLock.Until().Before(time.Now()) {
+		return c.initLock.LockContext(ctx)
+	}
+	if extended, err := c.initLock.ExtendContext(ctx); err != nil {
+		return nil
+	} else if !extended && c.initLock.Until().Before(time.Now()) {
+		return errors.New("redis cache: could not extend expired lock")
+	}
+	return nil
+}
+
+// ReleaseInitLock attempts to release the init lock.
+func (c RedisCache) ReleaseInitLock(ctx context.Context) error {
+	unlocked, err := c.initLock.UnlockContext(ctx)
+	if err != nil {
+		return err
+	}
+	if !unlocked {
+		return errors.New("redis cache: could not unlock lock")
+	}
+	return nil
 }

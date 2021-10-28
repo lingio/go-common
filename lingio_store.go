@@ -20,7 +20,7 @@ type LingioStore interface {
 	GetObject(file string) ([]byte, ObjectInfo, error)
 	PutObject(ctx context.Context, file string, data []byte) (ObjectInfo, error)
 	DeleteObject(ctx context.Context, file string) error
-	ListObjects() <-chan ObjectInfo
+	ListObjects(context.Context) <-chan ObjectInfo
 }
 
 // ObjectInfo
