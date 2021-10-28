@@ -82,7 +82,7 @@ func (es *EncryptedStore) encryptFilename(file string) string {
 func (es *EncryptedStore) decryptFilename(file string) string {
 	tmp, err := base32.StdEncoding.DecodeString(file)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("%s: %w", file, err))
 	}
 	es.cipher.Decrypt(tmp, tmp)
 	return string(tmp)
