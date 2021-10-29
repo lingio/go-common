@@ -107,7 +107,11 @@ func New{{$storeName}}(mc *minio.Client, cache {{.TypeName}}Cache, serviceKey st
 
 
 
-// initCache will eagerly initialize the cache if cache isn't already initialized.
+// initCache checks if the store is initialized before attempting to acquire
+// a temporary lock on the cache. To avoid deadlocks, the lock is designed to
+// automatically expire after a few seconds. Since we don't know how long time
+// the bucket --> cache initialization takes, we need to periodically extend
+// the lock while we fill the cache with data from the object store backend.
 func (s *{{$storeName}}) initCache() (resulterr error) {
 	defer func() {
 		if resulterr == nil {
@@ -127,8 +131,11 @@ func (s *{{$storeName}}) initCache() (resulterr error) {
 		// All concurrent processes will exit before or when this context completes.
 		ctx, cancel := context.WithCancel(context.Background())
 
+		// Try to acquire the init lock. It will be valid for a few seconds and we might need to extend it.
+		// If something stops the world (GC pause / ??) we might lose the lock (and not know about it).
+		// ^ This case is not currently handled.
 		if err := s.cache.AcquireInitLock(ctx); err != nil {
-			zl.Info().Str("component", "{{$storeName}}").Msg("no cache found, but could not acquire lock. retrying in 5s...")
+			zl.Warn().Str("component", "{{$storeName}}").Msg("no cache found, and could not acquire lock. retrying in 5s...")
 			time.Sleep(5*time.Second)
 			continue
 		}
@@ -198,8 +205,8 @@ func (s *{{$storeName}}) initCache() (resulterr error) {
 			wg.Wait()
 		}()
 
-		// Main control loop: will periodically refresh the cache lock and check
-		// for errors in bucket reading.
+		// Main control loop: will periodically refresh the cache lock, check
+		// for errors in bucket listing and put objects into the cache.
 		ticker := time.NewTicker(3*time.Second)
 		main_control_loop:
 		for {
@@ -230,6 +237,7 @@ func (s *{{$storeName}}) initCache() (resulterr error) {
 		ticker.Stop()
 		close(cacheinit)
 
+		// Not incredibly important, since the lock will automatically expire anyway.
 		if err := s.cache.ReleaseInitLock(ctx); err != nil && resulterr == nil {
 			resulterr = err
 		}
