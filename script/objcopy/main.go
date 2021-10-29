@@ -112,7 +112,7 @@ func main() {
 
 func readAllFromStore(store *common.ObjectStore) <-chan Object {
 	const workers = 10
-	listing := store.ListObjects()
+	listing := store.ListObjects(context.Background())
 	objchan := make(chan Object, workers*2)
 	errchan := make([]chan error, workers)
 	for i := 0; i < workers; i++ {

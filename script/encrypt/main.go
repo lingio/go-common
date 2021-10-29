@@ -94,6 +94,6 @@ func (ds dummyStore) PutObject(ctx context.Context, file string, data []byte) (c
 func (ds dummyStore) DeleteObject(ctx context.Context, file string) error {
 	return nil
 }
-func (ds dummyStore) ListObjects() <-chan common.ObjectInfo {
+func (ds dummyStore) ListObjects(ctx context.Context) <-chan common.ObjectInfo {
 	return nil
 }
