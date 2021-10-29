@@ -50,6 +50,7 @@ type {{.TypeName}}Cache interface {
 	Initialized() (bool, error)
 	AcquireInitLock(context.Context) error
 	ReleaseInitLock(context.Context) error
+	Init(common.LingioStore) error
 
 	// Primary key operations
 	Put(models.{{.DbTypeName}}, time.Duration, string) *common.Error
@@ -98,156 +99,13 @@ func New{{$storeName}}(mc *minio.Client, cache {{.TypeName}}Cache, serviceKey st
 		ready:   0,
 	}
 
-	if err := db.initCache(); err != nil {
+	if err := db.cache.Init(db.backend); err != nil {
 		return nil, fmt.Errorf("initializing cache: %w", err)
 	}
-
+	db.ready.SetTrue()
 	return db, nil
 }
 
-
-
-// initCache checks if the store is initialized before attempting to acquire
-// a temporary lock on the cache. To avoid deadlocks, the lock is designed to
-// automatically expire after a few seconds. Since we don't know how long time
-// the bucket --> cache initialization takes, we need to periodically extend
-// the lock while we fill the cache with data from the object store backend.
-func (s *{{$storeName}}) initCache() (resulterr error) {
-	defer func() {
-		if resulterr == nil {
-			zl.Info().Str("component", "{{$storeName}}").Msg("cache initialized.")
-			s.ready.SetTrue()
-		}
-	}()
-
-	for {
-		if ok, err := s.cache.Initialized(); err != nil {
-			return fmt.Errorf("checking cache: %w", err)
-		} else if ok {
-			zl.Info().Str("component", "{{$storeName}}").Msg("cache found, assuming up-to-date.")
-			return nil
-		}
-
-		// All concurrent processes will exit before or when this context completes.
-		ctx, cancel := context.WithCancel(context.Background())
-
-		// Try to acquire the init lock. It will be valid for a few seconds and we might need to extend it.
-		// If something stops the world (GC pause / ??) we might lose the lock (and not know about it).
-		// ^ This case is not currently handled.
-		if err := s.cache.AcquireInitLock(ctx); err != nil {
-			zl.Warn().Str("component", "{{$storeName}}").Msg("no cache found, and could not acquire lock. retrying in 5s...")
-			time.Sleep(5*time.Second)
-			continue
-		}
-
-
-		zl.Info().Str("component", "{{$storeName}}").Msg("no cache found, lock acquired, now fetching all data...")
-
-		defer cancel()
-
-		const NUM_WORKERS = 15
-
-		listing := s.backend.ListObjects(ctx)
-		// workerout is closed by worker pool process
-		workerout := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
-		// initobj is closed by main control loop
-		cacheinit := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
-
-		// Launch worker process.
-		var wg sync.WaitGroup
-		wg.Add(NUM_WORKERS)
-		go func() {
-			defer close(workerout)
-
-			worker := func() {
-				defer wg.Done()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case req, more := <-listing:
-						if !more {
-							return
-						}
-
-						data, info, err := s.backend.GetObject(req.Key)
-						if err != nil {
-							workerout <- {{.TypeName}}CacheIngest{
-								ObjectInfo: common.ObjectInfo{},
-								Entity:     models.{{.DbTypeName}}{},
-								Err: 		fmt.Errorf("backend: %w", err),
-							}
-							return
-						}
-
-						var entity models.{{.DbTypeName}}
-						if err := json.Unmarshal(data, &entity); err != nil {
-							workerout <- {{.TypeName}}CacheIngest{
-								ObjectInfo: common.ObjectInfo{},
-								Entity:     models.{{.DbTypeName}}{},
-								Err: 		fmt.Errorf("unmarshalling: %w", err),
-							}
-							return
-						}
-
-						workerout <- {{.TypeName}}CacheIngest{
-							ObjectInfo: info,
-							Entity:     entity,
-							Err: 		nil,
-						}
-					}
-				}
-			}
-
-			for i := 0; i < NUM_WORKERS; i++ {
-				go worker()
-			}
-			wg.Wait()
-		}()
-
-		// Main control loop: will periodically refresh the cache lock, check
-		// for errors in bucket listing and put objects into the cache.
-		ticker := time.NewTicker(3*time.Second)
-		main_control_loop:
-		for {
-			select {
-			case <-ticker.C:
-				if err := s.cache.AcquireInitLock(ctx); err != nil {
-					resulterr = err
-					break main_control_loop
-				}
-			case obj, more := <-workerout:
-				if !more {
-					break main_control_loop
-				}
-				if obj.Err != nil {
-					resulterr = obj.Err
-					break main_control_loop
-				}
-				var expiration time.Duration
-				if !obj.Expiration.IsZero() {
-					expiration = obj.Expiration.Sub(time.Now())
-				}
-				if err := s.cache.Put(obj.Entity, expiration, obj.ETag); err != nil {
-					resulterr = err
-					break main_control_loop
-				}
-			}
-		}
-		ticker.Stop()
-		close(cacheinit)
-
-		// Not incredibly important, since the lock will automatically expire anyway.
-		if err := s.cache.ReleaseInitLock(ctx); err != nil && resulterr == nil {
-			resulterr = err
-		}
-
-		// returning will cancel the ctx, which will also cancel listing and workers
-		return resulterr
-	}
-
-	//unreachable!
-}
 
 // filename map typed values to a string
 func (s *{{$storeName}}) filename(id string) string {
@@ -359,6 +217,163 @@ func (c {{$cacheName}}) Initialized() (bool, error) {
 		return false, err
 	}
 	return v != 0, nil
+}
+
+
+// Init checks if the store is initialized before attempting to acquire
+// a temporary lock on the cache. To avoid deadlocks, the lock is designed to
+// automatically expire after a few seconds. Since we don't know how long time
+// the bucket --> cache initialization takes, we need to periodically extend
+// the lock while we fill the cache with data from the object store backend.
+func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
+	defer func() {
+		if resulterr == nil {
+			zl.Info().Str("component", "{{$storeName}}").Msg("cache initialized.")
+		}
+	}()
+
+	for {
+		// Perform early bail check since lock acquire can take some time.
+		if ok, err := c.Initialized(); err != nil {
+			return fmt.Errorf("checking cache: %w", err)
+		} else if ok {
+			zl.Info().Str("component", "{{$storeName}}").Msg("cache found, assuming up-to-date.")
+			return nil
+		}
+
+		// All concurrent processes will exit before or when this context completes.
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Try to acquire the init lock. It will be valid for a few seconds and we might need to extend it.
+		// If something stops the world (GC pause / ??) we might lose the lock (and not know about it).
+		// ^ This case is not currently handled.
+		if err := c.AcquireInitLock(ctx); err != nil {
+			cancel()
+			zl.Warn().Str("component", "{{$storeName}}").Msg("could not acquire lock to initialize cache. retrying in 5s...")
+			time.Sleep(5*time.Second)
+			continue
+		}
+		defer cancel()
+
+		defer func(ctx context.Context) {
+			// Not incredibly important, since the lock will automatically expire anyway.
+			if err := c.ReleaseInitLock(ctx); err != nil {
+				zl.Warn().Str("component", "{{$storeName}}").Err(err).Msg("could not release cache lock")
+			}
+		}(ctx)
+
+		// Now that we have the lock, ensure that our view of the cache init status is up-to-date.
+		if ok, err := c.Initialized(); err != nil {
+			return fmt.Errorf("checking cache: %w", err)
+		} else if ok {
+			zl.Info().Str("component", "{{$storeName}}").Msg("cache found, assuming up-to-date.")
+			return nil
+		}
+
+		zl.Info().Str("component", "{{$storeName}}").Msg("cache not initialized, lock acquired, now fetching all data...")
+
+		const NUM_WORKERS = 15
+
+		listing := backend.ListObjects(ctx)
+		// workerout is closed by worker pool process
+		workerout := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
+		// initobj is closed by main control loop
+		cacheinit := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
+
+		// Launch worker process.
+		var wg sync.WaitGroup
+		wg.Add(NUM_WORKERS)
+		go func() {
+			defer close(workerout)
+
+			worker := func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case req, more := <-listing:
+						if !more {
+							return
+						}
+
+						data, info, err := backend.GetObject(req.Key)
+						if err != nil {
+							workerout <- {{.TypeName}}CacheIngest{
+								ObjectInfo: common.ObjectInfo{},
+								Entity:     models.{{.DbTypeName}}{},
+								Err: 		fmt.Errorf("backend: %w", err),
+							}
+							return
+						}
+
+						var entity models.{{.DbTypeName}}
+						if err := json.Unmarshal(data, &entity); err != nil {
+							workerout <- {{.TypeName}}CacheIngest{
+								ObjectInfo: common.ObjectInfo{},
+								Entity:     models.{{.DbTypeName}}{},
+								Err: 		fmt.Errorf("unmarshalling: %w", err),
+							}
+							return
+						}
+
+						workerout <- {{.TypeName}}CacheIngest{
+							ObjectInfo: info,
+							Entity:     entity,
+							Err: 		nil,
+						}
+					}
+				}
+			}
+
+			for i := 0; i < NUM_WORKERS; i++ {
+				go worker()
+			}
+			wg.Wait()
+		}()
+
+		// Main control loop: will periodically refresh the cache lock, check
+		// for errors in bucket listing and put objects into the cache.
+		ticker := time.NewTicker(3*time.Second)
+		main_control_loop:
+		for {
+			select {
+			case <-ticker.C:
+				if err := c.AcquireInitLock(ctx); err != nil {
+					resulterr = err
+					break main_control_loop
+				}
+			case obj, more := <-workerout:
+				if !more {
+					break main_control_loop
+				}
+				if obj.Err != nil {
+					resulterr = obj.Err
+					break main_control_loop
+				}
+				var expiration time.Duration
+				if !obj.Expiration.IsZero() {
+					expiration = obj.Expiration.Sub(time.Now())
+				}
+				if err := c.Put(obj.Entity, expiration, obj.ETag); err != nil {
+					resulterr = err
+					break main_control_loop
+				}
+			}
+		}
+		ticker.Stop()
+		close(cacheinit)
+
+		if err := c.Leader.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil && resulterr == nil {
+			zl.Warn().Str("component", "{{$storeName}}").Msg("could not mark cache as initialized")
+			resulterr = err
+		}
+
+		// returning will cancel the ctx, which will also cancel listing and workers
+		return resulterr
+	}
+
+	//unreachable!
 }
 
 func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration, etag string) *common.Error {
