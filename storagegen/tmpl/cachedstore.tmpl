@@ -1,0 +1,599 @@
+package storage
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+	"sync"
+
+	"github.com/lingio/person-service/models"
+
+	"github.com/lingio/go-common"
+	"github.com/minio/minio-go/v7"
+	"github.com/go-redis/redis/v8"
+	uuid "github.com/satori/go.uuid"
+
+	zl "github.com/rs/zerolog/log"
+)
+
+{{$modelName := .DbTypeName -}}
+{{$ID := .IdName -}}
+{{$storeName := printf "%sStore" .TypeName -}}
+{{$cacheInterface := printf "%sCache" .TypeName -}}
+{{$cacheName := printf "%sRedisCache" .TypeName -}}
+{{$cacheKey := printf "%sCacheKey" .TypeName -}}
+
+const {{$cacheKey}}ID = "{{.IdName | ToLower }}"
+{{range .SecondaryIndexes -}}
+const {{$cacheKey}}{{.Name}} = "{{.CacheKey}}"
+{{end}}
+
+var {{$storeName}}Config common.ObjectStoreConfig
+func init() {
+	err := json.Unmarshal([]byte(`
+{{.Config | PrettyPrint}}
+	`), &{{$storeName}}Config)
+	if err != nil {
+		panic(fmt.Errorf("error parsing store config: %w", err))
+	}
+}
+
+type {{$storeName}} struct {
+	backend common.LingioStore
+	cache   {{$cacheInterface}}
+	ready   common.AtomicBool
+}
+
+type {{.TypeName}}Cache interface {
+	Initialized() (bool, error)
+	AcquireInitLock(context.Context) error
+	ReleaseInitLock(context.Context) error
+	Init(common.LingioStore) error
+
+	// Primary key operations
+	Put(models.{{.DbTypeName}}, time.Duration, string) *common.Error
+	Get(string) (*models.{{.DbTypeName}}, string, *common.Error)
+	Delete(string) *common.Error
+
+	// Secondary index operations
+	{{- range .SecondaryIndexes -}}
+	{{- if eq .Type "unique"}}
+	GetBy{{.Name}}(string) (*models.{{$modelName}}, string, *common.Error)
+	{{- else if eq .Type "set"}}
+	GetAllBy{{.Name}}(string) ([]models.{{$modelName}}, string, *common.Error)
+	{{- end -}}
+	{{end}}
+}
+
+// {{.PrivateTypeName}}CacheObject is the internally stored cached object.
+type {{.PrivateTypeName}}CacheObject struct {
+	ETag string
+	Entity models.{{.DbTypeName}}
+}
+
+// {{.TypeName}}CacheIngest is used during initialization to fill the cache with data from the backend.
+type {{.TypeName}}CacheIngest struct {
+	common.ObjectInfo
+	Entity models.{{.DbTypeName}}
+	Err error
+}
+
+// New{{$storeName}} configures a new store and initializes the provided cache if required.
+func New{{$storeName}}(mc *minio.Client, cache {{.TypeName}}Cache, serviceKey string) (*{{$storeName}}, error) {
+	// DefaultOjbectStoreConfig || deserialize
+	objectStore, err := common.NewObjectStore(mc, "{{.BucketName}}", {{$storeName}}Config)
+	if err != nil {
+		return nil, fmt.Errorf("creating object store: %w", err)
+	}
+
+	encryptedStore, err := common.NewEncryptedStore(objectStore, serviceKey)
+	if err != nil {
+		return nil, fmt.Errorf("creating encrypted store: %w", err)
+	}
+
+	db := &{{$storeName}}{
+		backend: encryptedStore,
+		cache:   cache,
+		ready:   0,
+	}
+
+	if err := db.cache.Init(db.backend); err != nil {
+		return nil, fmt.Errorf("initializing cache: %w", err)
+	}
+	db.ready.SetTrue()
+	return db, nil
+}
+
+
+// filename map typed values to a string
+func (s *{{$storeName}}) filename(id string) string {
+	return fmt.Sprintf("%s.json", id)
+}
+
+//=============================================================================
+// Lingio store implementation
+//=============================================================================
+
+// Create attempts to store the provided object in store.
+func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, *common.Error) {
+	if obj.{{.IdName}} != "" {
+		// check that the object doesn't exist
+		o, _, err := s.Get(obj.{{.IdName}})
+		if err != nil && err.HttpStatusCode != http.StatusNotFound {
+			return nil, common.NewErrorE(http.StatusInternalServerError, err).
+				Str("ID", obj.{{.IdName}}).Msg("failed query for object")
+		}
+		if o != nil { // object exists!
+			return nil, common.NewError(http.StatusBadRequest).
+				Str("ID", obj.{{.IdName}}).Msg("an object with this ID is already stored in the database")
+		}
+	} else {
+		obj.{{.IdName}} = uuid.NewV4().String()
+	}
+	if err := s.put(ctx, obj); err != nil {
+		return nil, err
+	}
+	return &obj, nil
+}
+
+
+// Get attempts to load an object with the specified ID from the store.
+func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
+	return s.cache.Get(id)
+}
+
+// Put updates or creates the object in both cache and backing store.
+func (s *{{$storeName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
+	return s.put(ctx, obj)
+}
+
+// put does the heavy lifting for both Put and Create methods.
+func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err).
+			Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
+	}
+	info, err := s.backend.PutObject(ctx, s.filename(obj.{{.IdName}}), data)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err).
+			Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
+	}
+
+	var expiration time.Duration
+	if !info.Expiration.IsZero() {
+		expiration = info.Expiration.Sub(time.Now())
+	}
+	return s.cache.Put(obj, expiration, info.ETag)
+}
+
+// Delete
+func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
+	if err := s.backend.DeleteObject(ctx, s.filename(id)); err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err).
+			Str("ID", id).Msg("failed to delete object in minio")
+	}
+	return s.cache.Delete(id)
+}
+
+//=============================================================================
+// Extra functions from secondary indexes, passes to cache layer
+//=============================================================================
+{{range .SecondaryIndexes -}}
+{{if eq .Type "unique"}}
+// GetBy{{.Name}} fetches a single {{$modelName}} by its {{.Key}}
+func (s *{{$storeName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, string, *common.Error) {
+	return s.cache.GetBy{{.Name}}(key)
+}
+{{else if eq .Type "set"}}
+// GetAllBy{{.Name}} fetches all {{$modelName}}s by their {{.Key}}
+func (s *{{$storeName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, *common.Error) {
+	return s.cache.GetAllBy{{.Name}}(key)
+}
+{{end -}}
+{{end}}
+//=============================================================================
+// Cache implementation
+//=============================================================================
+
+// {{$cacheName}} is a redis-backed implementation of {{$cacheInterface}}
+type {{$cacheName}} struct {
+	*common.RedisCache
+}
+
+// New{{$cacheName}} writes to leader and reads from follower.
+func New{{$cacheName}}(leaderHost string, followerHost string) *{{$cacheName}} {
+	return &{{$cacheName}}{
+		RedisCache: common.NewRedisCache(leaderHost, followerHost, "{{.BucketName}}", "{{.Version}}"),
+	}
+}
+
+// Initialized performs a greedy check if the cache is initialized.
+func (c {{$cacheName}}) Initialized() (bool, error) {
+	v, err := c.Follower.Exists(context.TODO(), c.InitKey()).Result()
+	if err != nil {
+		return false, err
+	}
+	return v != 0, nil
+}
+
+
+// Init checks if the store is initialized before attempting to acquire
+// a temporary lock on the cache. To avoid deadlocks, the lock is designed to
+// automatically expire after a few seconds. Since we don't know how long time
+// the bucket --> cache initialization takes, we need to periodically extend
+// the lock while we fill the cache with data from the object store backend.
+func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
+	defer func() {
+		if resulterr == nil {
+			zl.Info().Str("component", "{{$storeName}}").Msg("cache initialized.")
+		}
+	}()
+
+	for {
+		// Perform early bail check since lock acquire can take some time.
+		if ok, err := c.Initialized(); err != nil {
+			return fmt.Errorf("checking cache: %w", err)
+		} else if ok {
+			zl.Info().Str("component", "{{$storeName}}").Msg("cache found, assuming up-to-date.")
+			return nil
+		}
+
+		// All concurrent processes will exit before or when this context completes.
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Try to acquire the init lock. It will be valid for a few seconds and we might need to extend it.
+		// If something stops the world (GC pause / ??) we might lose the lock (and not know about it).
+		// ^ This case is not currently handled.
+		if err := c.AcquireInitLock(ctx); err != nil {
+			cancel()
+			zl.Warn().Str("component", "{{$storeName}}").Msg("could not acquire lock to initialize cache. retrying in 5s...")
+			time.Sleep(5*time.Second)
+			continue
+		}
+		defer cancel()
+
+		defer func(ctx context.Context) {
+			// Not incredibly important, since the lock will automatically expire anyway.
+			if err := c.ReleaseInitLock(ctx); err != nil {
+				zl.Warn().Str("component", "{{$storeName}}").Err(err).Msg("could not release cache lock")
+			}
+		}(ctx)
+
+		// Now that we have the lock, ensure that our view of the cache init status is up-to-date.
+		if ok, err := c.Initialized(); err != nil {
+			return fmt.Errorf("checking cache: %w", err)
+		} else if ok {
+			zl.Info().Str("component", "{{$storeName}}").Msg("cache found, assuming up-to-date.")
+			return nil
+		}
+
+		zl.Info().Str("component", "{{$storeName}}").Msg("cache not initialized, lock acquired, now fetching all data...")
+
+		const NUM_WORKERS = 15
+
+		listing := backend.ListObjects(ctx)
+		// workerout is closed by worker pool process
+		workerout := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
+		// initobj is closed by main control loop
+		cacheinit := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
+
+		// Launch worker process.
+		var wg sync.WaitGroup
+		wg.Add(NUM_WORKERS)
+		go func() {
+			defer close(workerout)
+
+			worker := func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case req, more := <-listing:
+						if !more {
+							return
+						}
+
+						data, info, err := backend.GetObject(req.Key)
+						if err != nil {
+							workerout <- {{.TypeName}}CacheIngest{
+								ObjectInfo: common.ObjectInfo{},
+								Entity:     models.{{.DbTypeName}}{},
+								Err: 		fmt.Errorf("backend: %w", err),
+							}
+							return
+						}
+
+						var entity models.{{.DbTypeName}}
+						if err := json.Unmarshal(data, &entity); err != nil {
+							workerout <- {{.TypeName}}CacheIngest{
+								ObjectInfo: common.ObjectInfo{},
+								Entity:     models.{{.DbTypeName}}{},
+								Err: 		fmt.Errorf("unmarshalling: %w", err),
+							}
+							return
+						}
+
+						workerout <- {{.TypeName}}CacheIngest{
+							ObjectInfo: info,
+							Entity:     entity,
+							Err: 		nil,
+						}
+					}
+				}
+			}
+
+			for i := 0; i < NUM_WORKERS; i++ {
+				go worker()
+			}
+			wg.Wait()
+		}()
+
+		// Main control loop: will periodically refresh the cache lock, check
+		// for errors in bucket listing and put objects into the cache.
+		ticker := time.NewTicker(3*time.Second)
+		main_control_loop:
+		for {
+			select {
+			case <-ticker.C:
+				if err := c.AcquireInitLock(ctx); err != nil {
+					resulterr = err
+					break main_control_loop
+				}
+			case obj, more := <-workerout:
+				if !more {
+					break main_control_loop
+				}
+				if obj.Err != nil {
+					resulterr = obj.Err
+					break main_control_loop
+				}
+				var expiration time.Duration
+				if !obj.Expiration.IsZero() {
+					expiration = obj.Expiration.Sub(time.Now())
+				}
+				if err := c.Put(obj.Entity, expiration, obj.ETag); err != nil {
+					resulterr = err
+					break main_control_loop
+				}
+			}
+		}
+		ticker.Stop()
+		close(cacheinit)
+
+		if err := c.Leader.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil && resulterr == nil {
+			zl.Warn().Str("component", "{{$storeName}}").Msg("could not mark cache as initialized")
+			resulterr = err
+		}
+
+		// returning will cancel the ctx, which will also cancel listing and workers
+		return resulterr
+	}
+
+	//unreachable!
+}
+
+func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration, etag string) *common.Error {
+
+	co := {{.PrivateTypeName}}CacheObject{
+		ETag:   etag,
+		Entity: obj,
+	}
+
+	// Fetch the previous version of this object (if there is any)
+	orig, _, lerr := c.Get(obj.{{.IdName}})
+	if lerr != nil && lerr.HttpStatusCode != http.StatusNotFound {
+		return lerr
+	}
+
+	// Primary index: {{.IdName}}
+	if lerr = c.put(c.Key({{$cacheKey}}ID, obj.{{.IdName}}), co, expiration); lerr != nil {
+		return lerr
+	}
+
+	{{- /* Update unique secondary indexes */ -}}
+	{{range .SecondaryIndexes -}}
+	{{if eq .Type "unique"}}
+	{{if .Optional -}}
+	// Optional unique index: {{.Key}}
+	if obj.{{.Key}} != nil {
+		if lerr = c.put(c.Key({{$cacheKey}}{{.Name}}, *obj.{{.Key}}), co, expiration); lerr != nil {
+			return lerr
+		}
+	}
+	{{else -}}
+	// Unique index: {{.Key}}
+	if lerr = c.put(c.Key({{$cacheKey}}{{.Name}}, obj.{{.Key}}), co, expiration); lerr != nil {
+		return lerr
+	}
+	{{end -}}
+	{{end -}}
+	{{end}}
+
+	{{- /* Update aggregated secondary indexes */ -}}
+	{{range .SecondaryIndexes -}}
+	{{if eq .Type "set"}}
+	{{ if .Optional -}}
+	// Optional set index: {{.Key}}
+	if obj.{{.Key}} != nil {
+		c.Leader.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, *obj.{{.Key}}), obj.{{$ID}})
+		err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, *obj.{{.Key}})).Err()
+		if err != nil {
+			return common.NewErrorE(http.StatusInternalServerError, err)
+		}
+	}
+	{{else -}}
+	// Set index: {{.Key}}
+	c.Leader.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, obj.{{.Key}}), obj.{{$ID}})
+	err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, obj.{{.Key}})).Err()
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	{{end -}}
+	{{end -}}
+	{{end}}
+
+	{{- /* Remove old indexes if keys changed. */}}
+	// Delete old secondary indexes if they changed
+	if orig != nil {
+		{{range .SecondaryIndexes -}}
+		{{if eq .Type "unique" -}}
+		{{if .Optional -}}
+		if orig.{{.Key}} != nil && obj.{{.Key}} != nil && *orig.{{.Key}} != *obj.{{.Key}} {
+			err := c.Leader.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, *orig.{{.Key}})).Err()
+			if err != nil {
+				return common.NewErrorE(http.StatusInternalServerError, err)
+			}
+		}
+		{{- else -}}
+		if orig.{{.Key}} != obj.{{.Key}} {
+			err := c.Leader.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, orig.{{.Key}})).Err()
+			if err != nil {
+				return common.NewErrorE(http.StatusInternalServerError, err)
+			}
+		}
+		{{end -}}
+		{{end -}}
+		{{end}}
+		{{- /* */ -}}
+		{{range .SecondaryIndexes -}}
+		{{if eq .Type "set"}}
+		{{ if .Optional -}}
+		if orig.{{.Key}} != nil && obj.{{.Key}} != nil && *orig.{{.Key}} != *obj.{{.Key}} {
+			c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, *orig.{{.Key}}), orig.{{$ID}})
+			err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, *orig.{{.Key}})).Err()
+			if err != nil {
+				return common.NewErrorE(http.StatusInternalServerError, err)
+			}
+		}
+		{{- else -}}
+		if orig.{{.Key}} != obj.{{.Key}} {
+			c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, orig.{{.Key}}), orig.{{$ID}})
+			err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, orig.{{.Key}})).Err()
+			if err != nil {
+				return common.NewErrorE(http.StatusInternalServerError, err)
+			}
+		}
+		{{end -}}
+		{{end -}}
+		{{end}}
+	}
+	return nil
+}
+
+func (c {{$cacheName}}) put(fullKey string, co {{.PrivateTypeName}}CacheObject, expiration time.Duration) *common.Error {
+	data, err := json.Marshal(co)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	cmd := c.Leader.Set(context.TODO(), fullKey, data, expiration)
+	if _, err := cmd.Result(); err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	return nil
+}
+
+func (c {{$cacheName}}) get(keyName string, key string) (*models.{{.DbTypeName}}, string, *common.Error) {
+	cmd := c.Leader.Get(context.TODO(), c.Key(keyName, key))
+	data, err := cmd.Result()
+	if err != nil && err == redis.Nil {
+		return nil, "", common.NewErrorE(http.StatusNotFound, err)
+	} else if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	var co {{.PrivateTypeName}}CacheObject
+	if err := json.Unmarshal([]byte(data), &co); err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	return &co.Entity, co.ETag, nil
+}
+
+// Get a cached {{$modelName}} by it's {{.IdName}}
+func (c {{$cacheName}}) Get({{.IdName | ToLower}} string) (*models.{{.DbTypeName}}, string, *common.Error) {
+	return c.get({{$cacheKey}}ID, {{.IdName | ToLower}})
+}
+{{range .SecondaryIndexes -}}
+{{if eq .Type "unique"}}
+// GetBy{{.Name}} fetches a cached {{$modelName}} by its {{.Key}}
+func (c *{{$cacheName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, string, *common.Error) {
+	return c.get({{$cacheKey}}{{.Name}}, key)
+}
+{{else if eq .Type "set"}}
+// GetAllBy{{.Name}} fetches all cached {{$modelName}}s by their {{.Key}}
+func (c *{{$cacheName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, *common.Error) {
+	keys, err := c.Follower.SMembers(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, key)).Result()
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	}
+
+	objs := make([]models.{{$modelName}}, 0, 5)
+	for _, key := range keys {
+		obj, _, err := c.Get(key)
+		if err != nil {
+			return nil, "", err
+		}
+		objs = append(objs, *obj)
+	}
+
+	etag, err := c.Follower.Get(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, key)).Result()
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	return objs, etag, nil
+}
+{{end -}}
+{{end}}
+
+func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
+	{{if .SecondaryIndexes -}}
+	o, _, lerr := c.Get({{$ID | ToLower}})
+	{{else -}}
+	_, _, lerr := c.Get({{$ID | ToLower}})
+	{{end -}}
+	if lerr != nil {
+		return lerr
+	}
+
+	// Delete ID-cache
+	var err error
+	keys := []string{c.Key({{$cacheKey}}ID, {{$ID | ToLower}})}
+	{{range .SecondaryIndexes -}}
+	{{if .Optional}}
+	if o.{{.Key}} != nil {
+		keys = append(keys, c.Key({{$cacheKey}}{{.Name}}, *o.{{.Key}}))
+	}
+	{{else}}
+	keys = append(keys, c.Key({{$cacheKey}}{{.Name}}, o.{{.Key}}))
+	{{end -}}
+	{{end}}
+
+	err = c.Leader.Del(context.TODO(), keys...).Err()
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+
+	{{range .SecondaryIndexes -}}
+	{{if eq .Type "set"}}
+	{{ if .Optional -}}
+	if o.{{.Key}} != nil {
+		c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, *o.{{.Key}}), o.{{$ID}})
+		err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, *o.{{.Key}})).Err()
+		if err != nil {
+			return common.NewErrorE(http.StatusInternalServerError, err)
+		}
+	}
+	{{- else -}}
+	c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, o.{{.Key}}), o.{{$ID}})
+	err = c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, o.{{.Key}})).Err()
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	{{end -}}
+	{{end -}}
+	{{end}}
+
+	return nil
+}
