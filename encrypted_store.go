@@ -9,6 +9,8 @@ import (
 	"fmt"
 )
 
+var ErrDecrypt = errors.New("encrypted_store: decryption error")
+
 // EncryptedStore
 type EncryptedStore struct {
 	backend LingioStore
@@ -60,13 +62,21 @@ func (es EncryptedStore) DeleteObject(ctx context.Context, file string) error {
 	return es.backend.DeleteObject(ctx, es.encryptFilename(file))
 }
 
+// ListObjects will list all decryptable objects.
 func (es EncryptedStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
 	listing := es.backend.ListObjects(ctx)
 	objects := make(chan ObjectInfo, 10)
 	go func() {
 		defer close(objects)
 		for info := range listing {
-			info.Key = es.decryptFilename(info.Key)
+			// If backing store contains objects encrypted with another key or
+			// scheme, we should silently ignore them for now since the channel
+			// consumer cannot do anything worthwhile with that object anyway.
+			key, err := es.decryptFilename(info.Key)
+			if err != nil {
+				continue
+			}
+			info.Key = key
 			objects <- info
 		}
 	}()
@@ -82,11 +92,17 @@ func (es *EncryptedStore) encryptFilename(file string) string {
 	return base32.StdEncoding.EncodeToString(tmp)
 }
 
-func (es *EncryptedStore) decryptFilename(file string) string {
+func (es *EncryptedStore) decryptFilename(file string) (_ string, err error) {
+	// guard against Decrypt throwing a panic
+	defer func() {
+		if r := recover(); r != nil {
+			err = ErrDecrypt
+		}
+	}()
 	tmp, err := base32.StdEncoding.DecodeString(file)
 	if err != nil {
-		panic(fmt.Errorf("%s: %w", file, err))
+		return "", fmt.Errorf("%s: %w", file, err)
 	}
 	es.cipher.Decrypt(tmp, tmp)
-	return string(tmp)
+	return string(tmp), nil
 }
