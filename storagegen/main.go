@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 	"text/template"
@@ -124,6 +125,9 @@ func main() {
 		if err != nil {
 			zl.Fatal().Str("err", err.Error()).Msg("failed to load minio template")
 		}
+		if err := formatFile(filepath); err != nil {
+			zl.Warn().Str("err", err.Error()).Str("file", filename).Msg("failed to format file")
+		}
 	}
 
 	bytes := generate("tmpl/common.tmpl", TmplParams{})
@@ -215,4 +219,20 @@ func generate(tmplFilename string, params interface{}) []byte {
 func prettyPrint(i interface{}) string {
 	s, _ := json.MarshalIndent(i, "", "\t")
 	return string(s)
+}
+
+func formatFile(filepath string) error {
+	// If go is installed the standard way from https://golang.org/doc/install
+	// then we will detect at least Linux and MacOS. Special case for Ubuntu snap.
+	for _, gobin := range []string{"go", "/snap/bin/go", "/usr/local/go/bin/go"} {
+		exe, err := exec.LookPath(gobin)
+		if err != nil {
+			continue
+		}
+
+		cmd := exec.Command(exe, "fmt", filepath)
+		return cmd.Run()
+	}
+	zl.Warn().Str("file", filepath).Msg("skipping go fmt")
+	return nil
 }
