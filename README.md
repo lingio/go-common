@@ -15,6 +15,7 @@ go-common
       "dbTypeName": "DbPerson", // stored and returned type: models.{dbTypeName}
       "bucketName": "people",   // object store bucket name
       "version": "v1",          // change this if the stored data structure is changed
+      "getAll": false,          // enable to generate code for listing all objects
       "secondaryIndexes": [     // generate additional Get methods
       	// GetByPhone, builds index on models.{dbTypeName}.Phone
         { "key": "Phone", "type": "unique" },
@@ -72,5 +73,5 @@ go run ./script/tofile --root=./files
 # assuming encrypted bucket
 $ ls -1 ./files | gp run ./script/fromfile | \
 ENCRYPTION_KEY=256bit-key go run ./script/encrypt | \
-MINIO_SECRET=minioadmin go run ./script/objcopy --to=../service/config/local-stage.json
+MINIO_SECRET=minioadmin go run ./script/objcopy --to=../service/config/local-stage.json --bucket=people
 ```

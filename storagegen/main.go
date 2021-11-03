@@ -22,7 +22,7 @@ type BucketSpec struct {
 	Template         string
 	Version          string
 	IdName           *string
-	InclPartnerID    *bool
+	GetAll           *bool
 	Config           *common.ObjectStoreConfig
 }
 
@@ -77,9 +77,9 @@ func main() {
 		if b.Config != nil {
 			config = *b.Config
 		}
-		inclPartnerID := true // default to true
-		if b.InclPartnerID != nil {
-			inclPartnerID = *b.InclPartnerID
+		getAll := false // default to false
+		if b.GetAll != nil {
+			getAll = *b.GetAll
 		}
 		// Patch secondary index default values
 		for i, idx := range b.SecondaryIndexes {
@@ -113,13 +113,14 @@ func main() {
 			SecondaryIndexes: b.SecondaryIndexes,
 			IdName:           idName,
 			Version:          b.Version,
-			InclPartnerID:    inclPartnerID,
 			Config:           config,
+			GetAll:           getAll,
 		})
 
 		// go codeconv uses _ in filenames
 		filename := fmt.Sprintf("%s.gen.go", strings.Replace(b.BucketName, "-", "_", -1))
-		err := ioutil.WriteFile(path.Join(dir, filename), bytes, 0644)
+		filepath := path.Join(dir, filename)
+		err := ioutil.WriteFile(filepath, bytes, 0644)
 		if err != nil {
 			zl.Fatal().Str("err", err.Error()).Msg("failed to load minio template")
 		}
@@ -177,8 +178,8 @@ type TmplParams struct {
 	IdName           string
 	Version          string
 	SecondaryIndexes []SecondaryIndex
-	InclPartnerID    bool
 	Config           common.ObjectStoreConfig
+	GetAll           bool
 }
 
 type TmplParams2 struct {
