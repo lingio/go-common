@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -79,22 +80,33 @@ func (c RedisCache) Live() bool {
 	return true
 }
 
-// Key returns the primary index key
-func (c RedisCache) Key(keyName string, key string) string {
-	// Example: people.v1.id=p123
-	return c.Name + "." + c.Version + "." + keyName + "=" + key
+// BaseKey returns a scoped cache key
+func (c RedisCache) baseKey(elems ...string) string {
+	// e.g. people.v1.initialized
+	// e.g. people.v1.id
+	// e.g. people.v1.etag.id
+	var s []string
+	s = append(s, c.Name, c.Version)
+	s = append(s, elems...)
+	return strings.Join(s, ".")
 }
 
-// ETagKey returns the secondary index etag key
+// Key returns the an index key
+func (c RedisCache) Key(keyName, key string) string {
+	// Example: $scope.id=p123
+	return c.baseKey(keyName) + "=" + key
+}
+
+// ETagKey returns the etag key for an index key
 func (c RedisCache) ETagKey(keyName, key string) string {
-	// Example: GetAllByPartner --> people.v1.etag.partnerID=nobina
-	return c.Name + "." + c.Version + ".etag" + "." + keyName + "=" + key
+	// Example: GetAllByPartner --> $scope.etag.partnerID=nobina
+	return c.baseKey("etag", keyName) + "=" + key
 }
 
 // InitKey returns the key for checking and storing initialization status
 func (c RedisCache) InitKey() string {
-	// Example:  people.v1.initialized
-	return c.Name + "." + c.Version + ".initialized"
+	// Example: $scope.initialized
+	return c.baseKey("initialized")
 }
 
 // Initialized performs a greedy check if the cache is initialized.

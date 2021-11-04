@@ -28,7 +28,10 @@ import (
 const {{$cacheKey}}ID = "{{.IdName | ToLower }}"
 {{range .SecondaryIndexes -}}
 const {{$cacheKey}}{{.Name}} = "{{.CacheKey}}"
-{{end}}
+{{end -}}
+{{if .GetAll -}}
+const {{$cacheKey}}All = "_all"
+{{- end }}
 
 var {{$storeName}}Config common.ObjectStoreConfig
 func init() {
@@ -56,6 +59,9 @@ type {{.TypeName}}Cache interface {
 	Put(models.{{.DbTypeName}}, time.Duration, string) *common.Error
 	Get(string) (*models.{{.DbTypeName}}, string, *common.Error)
 	Delete(string) *common.Error
+	{{if .GetAll -}}
+	GetAll() ([]models.{{$modelName}}, string, *common.Error)
+	{{- end}}
 
 	// Secondary index operations
 	{{- range .SecondaryIndexes -}}
@@ -143,6 +149,13 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
 	return s.cache.Get(id)
 }
+
+{{if .GetAll -}}
+// GetAll loads all objects from this store.
+func (s *{{$storeName}}) GetAll() ([]models.{{.DbTypeName}}, string, *common.Error) {
+	return s.cache.GetAll()
+}
+{{- end }}
 
 // Put updates or creates the object in both cache and backing store.
 func (s *{{$storeName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
@@ -394,6 +407,16 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		return lerr
 	}
 
+	{{ if .GetAll -}}
+	// Primary index for all objects set: people.v1.all=all
+	// ETag index for all objects set: people.v1.etag.all=all
+	c.Leader.SAdd(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All), obj.{{$ID}})
+	err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Err()
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	{{- end }}
+
 	{{- /* Update unique secondary indexes */ -}}
 	{{range .SecondaryIndexes -}}
 	{{if eq .Type "unique"}}
@@ -547,6 +570,32 @@ func (c *{{$cacheName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}},
 {{end -}}
 {{end}}
 
+{{ if .GetAll -}}
+// GetAll fetches all cached {{$modelName}}s
+func (c *{{$cacheName}}) GetAll() ([]models.{{$modelName}}, string, *common.Error) {
+	keys, err := c.Follower.SMembers(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All)).Result()
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	}
+
+	objs := make([]models.{{$modelName}}, 0, 5)
+	for _, key := range keys {
+		obj, _, err := c.Get(key)
+		if err != nil {
+			return nil, "", err
+		}
+		objs = append(objs, *obj)
+	}
+
+	etag, err := c.Follower.Get(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Result()
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	return objs, etag, nil
+}
+{{- end}}
+
+
 func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 	{{if .SecondaryIndexes -}}
 	o, _, lerr := c.Get({{$ID | ToLower}})
@@ -574,6 +623,14 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
+
+	{{if .GetAll -}}
+	c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All), {{$ID | ToLower}})
+	err = c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Err()
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	{{ end }}
 
 	{{range .SecondaryIndexes -}}
 	{{if eq .Type "set"}}
