@@ -241,6 +241,7 @@ func (c {{$cacheName}}) Initialized() (bool, error) {
 func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 	defer func() {
 		if resulterr == nil {
+			c.WarmedUp.SetTrue()
 			zl.Info().Str("component", "{{$storeName}}").Msg("cache initialized.")
 		}
 	}()
