@@ -28,8 +28,16 @@ type BucketSpec struct {
 }
 
 type SecondaryIndex struct {
-	Key, Type, Name, CacheKey string
-	Optional                  bool
+	Key   string
+	Keyes []indexField
+
+	Name, Type, CacheKey string
+	Optional             bool
+}
+
+type indexField struct {
+	Key      string
+	Optional bool
 }
 
 type StorageSpec struct {
@@ -90,18 +98,29 @@ func main() {
 			case "set":
 				break
 			default:
-				zl.Fatal().Msg("unknown index type: " + idx.Type)
+				zl.Fatal().Msg("unknown index 'type': " + idx.Type)
+			}
+			if idx.Key == "" && len(idx.Keyes) == 0 {
+				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: missing 'key' or 'keyes'", b.TypeName, i))
+			} else if idx.Key != "" && len(idx.Keyes) > 0 {
+				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: cannot use both 'key' and 'keyes'", b.TypeName, i))
+			} else if idx.Key != "" && len(idx.Keyes) == 0 {
+				idx.Keyes = append(idx.Keyes, indexField{idx.Key, false})
 			}
 			// Ensure key is exported.
-			if idx.Key[0] >= 'a' && idx.Key[0] <= 'z' {
-				zl.Fatal().Msg("index key must not be private: " + idx.Key)
+			for _, idx := range idx.Keyes {
+				if idx.Key[0] >= 'a' && idx.Key[0] <= 'z' {
+					zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: key '%s' is not exported", b.TypeName, i, idx.Key))
+				}
 			}
+			// By convention, compound indexes have the primary discriminant in the last position. E.g. [Partner, Email]
+			lastKey := idx.Keyes[len(idx.Keyes)-1].Key
 			// Default value for name is key: e.g. Get<All?>ByEmail
 			if idx.Name == "" {
-				idx.Name = idx.Key
+				idx.Name = lastKey
 			}
 			// Default cache key
-			idx.CacheKey = strings.ToLower(idx.Key[0:1]) + idx.Key[1:]
+			idx.CacheKey = strings.ToLower(lastKey[0:1]) + lastKey[1:]
 			b.SecondaryIndexes[i] = idx
 		}
 
@@ -192,9 +211,15 @@ type TmplParams2 struct {
 
 func generate(tmplFilename string, params interface{}) []byte {
 	funcMap := template.FuncMap{
-		"ToUpper":     strings.ToUpper,
-		"ToLower":     strings.ToLower,
-		"PrettyPrint": prettyPrint,
+		"ToUpper":       strings.ToUpper,
+		"ToLower":       strings.ToLower,
+		"PrettyPrint":   prettyPrint,
+		"CamelCase":     camelCaseKey,
+		"Join":          joinString,
+		"Append":        appendString,
+		"Prepend":       prependString,
+		"CompareFields": compareFields,
+		"Materialize":   materialize,
 	}
 	tpltxt, err := os.ReadFile(tmplFilename)
 	if err != nil {
@@ -219,6 +244,67 @@ func generate(tmplFilename string, params interface{}) []byte {
 func prettyPrint(i interface{}) string {
 	s, _ := json.MarshalIndent(i, "", "\t")
 	return string(s)
+}
+
+func camelCaseKey(keyes []indexField) []string {
+	var s []string
+	for _, idx := range keyes {
+		s = append(s, strings.ToLower(idx.Key[0:1])+idx.Key[1:])
+	}
+	return s
+}
+
+func appendString(b string, a []string) []string {
+	var s []string
+	for _, str := range a {
+		s = append(s, str+b)
+	}
+	return s
+}
+
+func prependString(b string, a []string) []string {
+	var s []string
+	for _, str := range a {
+		s = append(s, b+str)
+	}
+	return s
+}
+
+func (i indexField) materialize(on string) string {
+	if i.Optional {
+		return fmt.Sprintf("*%s.%s", on, i.Key)
+	}
+	return fmt.Sprintf("%s.%s", on, i.Key)
+}
+
+// obj []indexes => [obj.Field1, *obj.Field2, ...]
+func materialize(on string, fields []indexField) []string {
+	var s []string
+	for _, idx := range fields {
+		s = append(s, idx.materialize(on))
+	}
+	return s
+}
+
+// orig obj != key => orig.key != obj.key
+func compareFields(a, b, comp string, keyes []indexField) []string {
+	var s []string
+	for _, idx := range keyes {
+		s = append(s, idx.materialize(a)+comp+idx.materialize(b))
+	}
+	return s
+}
+
+func zipStrings(a, b []string) []string {
+	var s []string
+	for i := range a {
+		s = append(s, a[i]+b[i])
+	}
+	return s
+}
+
+func joinString(b string, a []string) string {
+	return strings.Join(a, b)
 }
 
 func formatFile(filepath string) error {
