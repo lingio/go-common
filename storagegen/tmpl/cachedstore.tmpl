@@ -241,10 +241,11 @@ func (c {{$cacheName}}) Initialized() (bool, error) {
 // the bucket --> cache initialization takes, we need to periodically extend
 // the lock while we fill the cache with data from the object store backend.
 func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
+	var objectsLoaded int
 	defer func() {
 		if resulterr == nil {
 			c.WarmedUp.SetTrue()
-			zl.Info().Str("component", "{{$storeName}}").Msg("cache initialized.")
+			zl.Info().Str("component", "{{$storeName}}").Int("objectsLoaded", objectsLoaded).Msg("cache initialized.")
 		}
 	}()
 
@@ -351,6 +352,7 @@ func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 		// Main control loop: will periodically refresh the cache lock, check
 		// for errors in bucket listing and put objects into the cache.
 		ticker := time.NewTicker(3*time.Second)
+		objectsLoaded = 0
 		main_control_loop:
 		for {
 			select {
@@ -375,6 +377,7 @@ func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 					resulterr = err
 					break main_control_loop
 				}
+				objectsLoaded++
 			}
 		}
 		ticker.Stop()
