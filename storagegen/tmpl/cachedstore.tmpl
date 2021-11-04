@@ -429,7 +429,7 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	{{if eq .Type "unique"}}
 	{{if .Optional -}}
 	// Optional unique index: {{.Name}}
-	if {{ .Keyes | Materialize "obj" | Append " != nil" | Join " && " }} {
+	if {{ .Keyes | CheckOptional "obj" | Join " && " }} {
 		idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
 		if lerr = c.put(c.Key({{$cacheKey}}{{.Name}}, idx), co, expiration); lerr != nil {
 			return lerr
@@ -450,7 +450,7 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	{{if eq .Type "set"}}
 	{{ if .Optional -}}
 	// Optional set index: {{.Name}}
-	if {{ .Keyes | Materialize "obj" | Append " != nil" | Join " && " }} {
+	if {{ .Keyes | CheckOptional "obj" | Join " && " }} {
 		idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
 		c.Leader.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
 		err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
@@ -476,8 +476,8 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{range .SecondaryIndexes -}}
 		{{if eq .Type "unique" -}}
 		{{if .Optional -}}
-		if {{ .Keyes | Materialize "obj" | Append " != nil" | Join " && " }} && {{ .Keyes | Materialize "orig" | Append " != nil" | Join " && " }} && {{ .Keyes | CompareFields "obj" "orig" " != " | Join " && "}} {
-			idx = CompoundIndex({{ .Keyes | Materialize "*obj" | Join ", " }})
+		if {{ .Keyes | CheckOptional "obj" | Join " && " }} && {{ .Keyes | CheckOptional "orig" | Join " && " }} && {{ .Keyes | CompareFields "obj" "orig" " != " | Join " && "}} {
+			idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
 			err := c.Leader.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
@@ -498,7 +498,7 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{range .SecondaryIndexes -}}
 		{{if eq .Type "set"}}
 		{{ if .Optional -}}
-		if {{ .Keyes | Materialize "obj" | Append " != nil" | Join " && " }} && {{ .Keyes | Materialize "orig" | Append " != nil" | Join " && " }} && {{ .Keyes | CompareFields "obj" "orig" " != " | Join " && "}} {
+		if {{ .Keyes | CheckOptional "obj" | Join " && " }} && {{ .Keyes | CheckOptional "orig" | Join " && " }} && {{ .Keyes | CompareFields "obj" "orig" " != " | Join " && "}} {
 			idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
 			c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
 			err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
@@ -629,7 +629,7 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 	keys := []string{c.Key({{$cacheKey}}ID, {{$ID | ToLower}})}
 	{{range .SecondaryIndexes -}}
 	{{if .Optional}}
-	if {{ .Keyes | Materialize "o" | Append " != nil" | Join " && " }} {
+	if {{ .Keyes | CheckOptional "o" | Join " && " }} {
 		idx = CompoundIndex({{ .Keyes | Materialize "o" | Join ", " }})
 		keys = append(keys, c.Key({{$cacheKey}}{{.Name}}, idx))
 	}
@@ -655,7 +655,7 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 	{{range .SecondaryIndexes -}}
 	{{if eq .Type "set"}}
 	{{ if .Optional -}}
-	if {{ .Keyes | Materialize "o" | Append " != nil" | Join " && " }} {
+	if {{ .Keyes | CheckOptional "o" | Join " && " }} {
 		idx = CompoundIndex({{ .Keyes | Materialize "o" | Join ", " }})
 		c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
 		err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()

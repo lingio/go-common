@@ -108,9 +108,12 @@ func main() {
 				idx.Keyes = append(idx.Keyes, indexField{idx.Key, false})
 			}
 			// Ensure key is exported.
-			for _, idx := range idx.Keyes {
-				if idx.Key[0] >= 'a' && idx.Key[0] <= 'z' {
-					zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: key '%s' is not exported", b.TypeName, i, idx.Key))
+			for _, field := range idx.Keyes {
+				if field.Key[0] >= 'a' && field.Key[0] <= 'z' {
+					zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: key '%s' is not exported", b.TypeName, i, field.Key))
+				}
+				if field.Optional {
+					idx.Optional = true
 				}
 			}
 			// By convention, compound indexes have the primary discriminant in the last position. E.g. [Partner, Email]
@@ -220,6 +223,7 @@ func generate(tmplFilename string, params interface{}) []byte {
 		"Prepend":       prependString,
 		"CompareFields": compareFields,
 		"Materialize":   materialize,
+		"CheckOptional": checkOptionalField,
 	}
 	tpltxt, err := os.ReadFile(tmplFilename)
 	if err != nil {
@@ -282,6 +286,16 @@ func materialize(on string, fields []indexField) []string {
 	var s []string
 	for _, idx := range fields {
 		s = append(s, idx.materialize(on))
+	}
+	return s
+}
+
+func checkOptionalField(on string, fields []indexField) []string {
+	var s []string
+	for _, idx := range fields {
+		if idx.Optional {
+			s = append(s, fmt.Sprintf("%s.%s != nil", on, idx.Key))
+		}
 	}
 	return s
 }
