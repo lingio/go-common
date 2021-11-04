@@ -20,7 +20,9 @@ go-common
       	// GetByPhone, builds index on models.{dbTypeName}.Phone
         { "key": "Phone", "type": "unique" },
         // GetByEmail, builds index on *models.{dbTypeName}.Email if it not nil
-        { "key": "Email", "type": "unique", "optional": true },
+        { "keyes": [{ "key": "Email", "optional": true }], "type": "unique" },
+        // GetByPartnerAndEmail, builds a compound index on models.{dbTypeName}.Partner and *models.{dbTypeName}.Email if it not nil
+        { "keyes": [{ "key": "Partner" }, { "key": "Email", "optional": true }], "type": "unique", "name": "PartnerAndEmail" },
         // GetAllByPartner, builds index on models.{dbTypeName}.Partner
         { "key": "Partner", "type": "set"}
       ],
