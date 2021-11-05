@@ -65,7 +65,7 @@ type {{.TypeName}}Cache interface {
 
 	// Secondary index operations
 	{{- range .SecondaryIndexes -}}
-	{{$keyList :=  .Keyes | CamelCase | Join ", " }}
+	{{$keyList :=  .Keys | CamelCase | Join ", " }}
 	{{- if eq .Type "unique"}}
 	GetBy{{.Name}}({{$keyList}} string) (*models.{{$modelName}}, string, *common.Error)
 	{{- else if eq .Type "set"}}
@@ -196,7 +196,7 @@ func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
 // Extra functions from secondary indexes, passes to cache layer
 //=============================================================================
 {{range .SecondaryIndexes -}}
-{{$keyList :=  .Keyes | CamelCase | Join ", " }}
+{{$keyList :=  .Keys | CamelCase | Join ", " }}
 {{if eq .Type "unique"}}
 // GetBy{{.Name}} fetches a single {{$modelName}} by its {{.Key}}
 func (s *{{$storeName}}) GetBy{{.Name}}({{ $keyList }} string) (*models.{{$modelName}}, string, *common.Error) {
@@ -432,15 +432,15 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	{{if eq .Type "unique"}}
 	{{if .Optional -}}
 	// Optional unique index: {{.Name}}
-	if {{ .Keyes | CheckOptional "obj" | Join " && " }} {
-		idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
+	if {{ .Keys | CheckOptional "obj" | Join " && " }} {
+		idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
 		if lerr = c.put(c.Key({{$cacheKey}}{{.Name}}, idx), co, expiration); lerr != nil {
 			return lerr
 		}
 	}
 	{{else -}}
 	// Unique index: {{.Name}}
-	idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
+	idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
 	if lerr = c.put(c.Key({{$cacheKey}}{{.Name}}, idx), co, expiration); lerr != nil {
 		return lerr
 	}
@@ -453,8 +453,8 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	{{if eq .Type "set"}}
 	{{ if .Optional -}}
 	// Optional set index: {{.Name}}
-	if {{ .Keyes | CheckOptional "obj" | Join " && " }} {
-		idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
+	if {{ .Keys | CheckOptional "obj" | Join " && " }} {
+		idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
 		c.Leader.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
 		err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 		if err != nil {
@@ -463,7 +463,7 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	}
 	{{else -}}
 	// Set index: {{.Name}}
-	idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
+	idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
 	c.Leader.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
 	err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 	if err != nil {
@@ -479,16 +479,16 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{range .SecondaryIndexes -}}
 		{{if eq .Type "unique" -}}
 		{{if .Optional -}}
-		if {{ .Keyes | CheckOptional "obj" | Join " && " }} && {{ .Keyes | CheckOptional "orig" | Join " && " }} && {{ .Keyes | CompareFields "obj" "orig" " != " | Join " && "}} {
-			idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
+		if {{ .Keys | CheckOptional "obj" | Join " && " }} && {{ .Keys | CheckOptional "orig" | Join " && " }} && {{ .Keys | CompareFields "obj" "orig" " != " | Join " && "}} {
+			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
 			err := c.Leader.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
 			}
 		}
 		{{- else -}}
-		if {{ .Keyes | CompareFields "obj" "orig" " != " | Join " && " }} {
-			idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
+		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " && " }} {
+			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
 			err := c.Leader.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
@@ -501,8 +501,8 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{range .SecondaryIndexes -}}
 		{{if eq .Type "set"}}
 		{{ if .Optional -}}
-		if {{ .Keyes | CheckOptional "obj" | Join " && " }} && {{ .Keyes | CheckOptional "orig" | Join " && " }} && {{ .Keyes | CompareFields "obj" "orig" " != " | Join " && "}} {
-			idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
+		if {{ .Keys | CheckOptional "obj" | Join " && " }} && {{ .Keys | CheckOptional "orig" | Join " && " }} && {{ .Keys | CompareFields "obj" "orig" " != " | Join " && "}} {
+			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
 			c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
 			err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
@@ -510,8 +510,8 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 			}
 		}
 		{{- else -}}
-		if {{ .Keyes | CompareFields "obj" "orig" " != " | Join " && " }} {
-			idx = CompoundIndex({{ .Keyes | Materialize "obj" | Join ", " }})
+		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " && " }} {
+			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
 			c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
 			err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
@@ -557,7 +557,7 @@ func (c {{$cacheName}}) Get({{.IdName | ToLower}} string) (*models.{{.DbTypeName
 	return c.get({{$cacheKey}}ID, {{.IdName | ToLower}})
 }
 {{range .SecondaryIndexes -}}
-{{$keyList :=  .Keyes | CamelCase | Join ", " }}
+{{$keyList :=  .Keys | CamelCase | Join ", " }}
 {{if eq .Type "unique"}}
 // GetBy{{.Name}} fetches a cached {{$modelName}} by its {{.Key}}
 func (c *{{$cacheName}}) GetBy{{.Name}}({{ $keyList }} string) (*models.{{$modelName}}, string, *common.Error) {
@@ -632,12 +632,12 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 	keys := []string{c.Key({{$cacheKey}}ID, {{$ID | ToLower}})}
 	{{range .SecondaryIndexes -}}
 	{{if .Optional}}
-	if {{ .Keyes | CheckOptional "o" | Join " && " }} {
-		idx = CompoundIndex({{ .Keyes | Materialize "o" | Join ", " }})
+	if {{ .Keys | CheckOptional "o" | Join " && " }} {
+		idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
 		keys = append(keys, c.Key({{$cacheKey}}{{.Name}}, idx))
 	}
 	{{else}}
-	idx = CompoundIndex({{ .Keyes | Materialize "o" | Join ", " }})
+	idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
 	keys = append(keys, c.Key({{$cacheKey}}{{.Name}}, idx))
 	{{end -}}
 	{{end}}
@@ -658,8 +658,8 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 	{{range .SecondaryIndexes -}}
 	{{if eq .Type "set"}}
 	{{ if .Optional -}}
-	if {{ .Keyes | CheckOptional "o" | Join " && " }} {
-		idx = CompoundIndex({{ .Keyes | Materialize "o" | Join ", " }})
+	if {{ .Keys | CheckOptional "o" | Join " && " }} {
+		idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
 		c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
 		err := c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 		if err != nil {
@@ -667,7 +667,7 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 		}
 	}
 	{{- else -}}
-	idx = CompoundIndex({{ .Keyes | Materialize "o" | Join ", " }})
+	idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
 	c.Leader.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
 	err = c.Leader.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 	if err != nil {

@@ -28,8 +28,8 @@ type BucketSpec struct {
 }
 
 type SecondaryIndex struct {
-	Key   string
-	Keyes []indexField
+	Key  string
+	Keys []indexField
 
 	Name, Type, CacheKey string
 	Optional             bool
@@ -100,15 +100,15 @@ func main() {
 			default:
 				zl.Fatal().Msg("unknown index 'type': " + idx.Type)
 			}
-			if idx.Key == "" && len(idx.Keyes) == 0 {
+			if idx.Key == "" && len(idx.Keys) == 0 {
 				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: missing 'key' or 'keyes'", b.TypeName, i))
-			} else if idx.Key != "" && len(idx.Keyes) > 0 {
+			} else if idx.Key != "" && len(idx.Keys) > 0 {
 				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: cannot use both 'key' and 'keyes'", b.TypeName, i))
-			} else if idx.Key != "" && len(idx.Keyes) == 0 {
-				idx.Keyes = append(idx.Keyes, indexField{idx.Key, false})
+			} else if idx.Key != "" && len(idx.Keys) == 0 {
+				idx.Keys = append(idx.Keys, indexField{idx.Key, false})
 			}
 			// Ensure key is exported.
-			for _, field := range idx.Keyes {
+			for _, field := range idx.Keys {
 				if field.Key[0] >= 'a' && field.Key[0] <= 'z' {
 					zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: key '%s' is not exported", b.TypeName, i, field.Key))
 				}
@@ -117,7 +117,7 @@ func main() {
 				}
 			}
 			// By convention, compound indexes have the primary discriminant in the last position. E.g. [Partner, Email]
-			lastKey := idx.Keyes[len(idx.Keyes)-1].Key
+			lastKey := idx.Keys[len(idx.Keys)-1].Key
 			// Default value for name is key: e.g. Get<All?>ByEmail
 			if idx.Name == "" {
 				idx.Name = lastKey
