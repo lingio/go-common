@@ -33,7 +33,7 @@ type ObjectStoreConfig struct {
 
 // NewObjectStore attempts to initialize a new bucket if it does not already exist.
 func NewObjectStore(mc *minio.Client, bucketName string, config ObjectStoreConfig) (*ObjectStore, error) {
-	if err := initBucket(mc, bucketName, config); err != nil {
+	if err := checkBucket(mc, bucketName, config); err != nil {
 		return nil, err
 	}
 
@@ -115,29 +115,14 @@ func (os ObjectStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
 	return objects
 }
 
-// initBucket ensures that a bucket exists and is configured as requested.
-func initBucket(mc *minio.Client, bucketName string, config ObjectStoreConfig) error {
+// checkBucket ensures that a bucket exists and is configured as requested.
+func checkBucket(mc *minio.Client, bucketName string, config ObjectStoreConfig) error {
 	exists, err := mc.BucketExists(context.Background(), bucketName)
 	if err != nil {
-		return fmt.Errorf("bucket exists: %s: %w", bucketName, err)
+		return fmt.Errorf("check bucket: %s: %w", bucketName, err)
 	}
 	if !exists {
-		err := mc.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{
-			ObjectLocking: config.ObjectLocking,
-		})
-		if err != nil {
-			return fmt.Errorf("make bucket: %w", err)
-		}
-	}
-	if config.Versioning {
-		if err := mc.EnableVersioning(context.Background(), bucketName); err != nil {
-			return fmt.Errorf("enable versioning: %w", err)
-		}
-	}
-	if config.Lifecycle != nil {
-		if err := mc.SetBucketLifecycle(context.Background(), bucketName, config.Lifecycle); err != nil {
-			return fmt.Errorf("set lifecycle: %w", err)
-		}
+		return fmt.Errorf("check bucket: %s does not exist", bucketName)
 	}
 	return nil
 }
