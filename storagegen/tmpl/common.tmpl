@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
     "github.com/lingio/go-common"
     "github.com/minio/minio-go/v7"
@@ -39,4 +40,8 @@ func getPartnerBucketETag(c *minio.Client, bucketName string, partnerID string) 
 	}
 	tagsMap := bucketTags.ToMap()
 	return tagsMap[fmt.Sprintf("%s-etag", partnerID)], nil
+}
+
+func CompoundIndex(indexes ...string) string {
+	return strings.Join(indexes, "-")
 }
