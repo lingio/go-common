@@ -3,6 +3,8 @@ package common
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -11,42 +13,83 @@ import (
 	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
 )
 
-// RedisCache is a versioned,
+var ErrInvalidRedisConfig = errors.New("redis cache config is not valid")
+
+const redisCacheKeyInitialized = "initialized"
+
+// RedisSetupErr wraps an underlying error that occured during cache setup.
+type RedisSetupErr struct {
+	Err        error
+	MasterName string
+	ServiceDNS string
+}
+
+func (e *RedisSetupErr) Error() string {
+	// redis cache: %err
+	// failover redis cache with master on a.s.sd.d: %err
+	if e == nil {
+		return "<nil>"
+	}
+	s := "redis cache"
+	if e.MasterName != "" && e.ServiceDNS != "" {
+		s = "failover " + s + " with " + e.MasterName + " on " + e.ServiceDNS
+	}
+	s = s + ": " + e.Err.Error()
+	return s
+}
+func (e *RedisSetupErr) Unwrap() error { return e.Err }
+
+// RedisCache is a named and versioned cache for a specific collections
 type RedisCache struct {
-	Version  string
-	Name     string
-	Follower *redis.Client
-	Leader   *redis.Client
+	*redis.Client
+
+	Version string
+	Name    string
+
 	WarmedUp AtomicBool
 
-	rs       *redsync.Redsync
+	redsync  *redsync.Redsync
 	initLock *redsync.Mutex
 }
 
-func NewRedisCache(leaderHost, followerHost string, name, version string) *RedisCache {
-	leader := redis.NewClient(&redis.Options{
-		Addr:     leaderHost,
-		Password: "",
-		DB:       0,
-	})
-
-	follower := redis.NewClient(&redis.Options{
-		Addr:     followerHost,
-		Password: "",
-		DB:       0,
-	})
-
-	rs := redsync.New(goredis.NewPool(leader))
-
-	return &RedisCache{
+// NewRedisCache returns an initialized redis cache using name and version.
+func NewRedisCache(client *redis.Client, name, version string) *RedisCache {
+	rc := &RedisCache{
 		Version:  version,
 		Name:     name,
-		Follower: follower,
-		Leader:   leader,
+		Client:   client,
 		WarmedUp: 0,
-		rs:       rs,
-		initLock: rs.NewMutex(name+"."+version+".initializing", redsync.WithExpiry(10*time.Second)),
+		redsync:  redsync.New(goredis.NewPool(client)),
 	}
+	rc.initLock = rc.redsync.NewMutex(rc.InitKey(), redsync.WithExpiry(10*time.Second))
+	return rc
+}
+
+// SetupRedisClient will attempt to 1) create a failover redis client by looking
+// up sentinel addrs using the provided service DNS, or 2) attempt to create a
+// simple redis client using the provided simpleAddr. If all three arguments are
+// empty, the function will return ErrInvalidRedisConfig.
+func SetupRedisClient(simpleAddr, masterName, serviceDNS string) (*redis.Client, error) {
+	if masterName != "" && serviceDNS != "" {
+		_, srvs, err := net.LookupSRV("redis", "tcp", serviceDNS)
+		if err != nil {
+			return nil, &RedisSetupErr{Err: err, MasterName: masterName, ServiceDNS: serviceDNS}
+		}
+		sentinelAddrs := make([]string, 0)
+		for _, srv := range srvs {
+			sentinelAddrs = append(sentinelAddrs, fmt.Sprintf("%s:%d", srv.Target, srv.Port))
+		}
+		return redis.NewFailoverClient(&redis.FailoverOptions{
+			MasterName:    masterName,
+			SentinelAddrs: sentinelAddrs,
+		}), nil
+	}
+
+	if simpleAddr != "" {
+		return redis.NewClient(&redis.Options{Addr: simpleAddr}), nil
+	}
+
+	return nil, &RedisSetupErr{Err: ErrInvalidRedisConfig}
 }
 
 //=============================================================================
@@ -65,13 +108,13 @@ func (c RedisCache) Ready() bool {
 
 // Live indicates if the service is healthy.
 func (c RedisCache) Live() bool {
-	if val, err := c.Leader.Ping(context.TODO()).Result(); err != nil {
+	if val, err := c.Ping(context.TODO()).Result(); err != nil {
 		return false
 	} else if val != "PONG" {
 		return false
 	}
 
-	if val, err := c.Follower.Ping(context.TODO()).Result(); err != nil {
+	if val, err := c.Ping(context.TODO()).Result(); err != nil {
 		return false
 	} else if val != "PONG" {
 		return false
@@ -80,15 +123,19 @@ func (c RedisCache) Live() bool {
 	return true
 }
 
-// BaseKey returns a scoped cache key
-func (c RedisCache) baseKey(elems ...string) string {
+func formatRedisCacheKey(elems ...string) string {
 	// e.g. people.v1.initialized
 	// e.g. people.v1.id
 	// e.g. people.v1.etag.id
+	return strings.Join(elems, ".")
+}
+
+// BaseKey returns a scoped cache key
+func (c RedisCache) baseKey(elems ...string) string {
 	var s []string
 	s = append(s, c.Name, c.Version)
 	s = append(s, elems...)
-	return strings.Join(s, ".")
+	return formatRedisCacheKey(s...)
 }
 
 // Key returns the an index key
@@ -106,12 +153,12 @@ func (c RedisCache) ETagKey(keyName, key string) string {
 // InitKey returns the key for checking and storing initialization status
 func (c RedisCache) InitKey() string {
 	// Example: $scope.initialized
-	return c.baseKey("initialized")
+	return c.baseKey(redisCacheKeyInitialized)
 }
 
 // Initialized performs a greedy check if the cache is initialized.
 func (c RedisCache) Initialized() (bool, error) {
-	v, err := c.Follower.Exists(context.TODO(), c.InitKey()).Result()
+	v, err := c.Exists(context.TODO(), c.InitKey()).Result()
 	if err != nil {
 		return false, err
 	}
