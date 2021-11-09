@@ -227,7 +227,7 @@ func New{{$cacheName}}(client *redis.Client) *{{$cacheName}} {
 
 // Initialized performs a greedy check if the cache is initialized.
 func (c {{$cacheName}}) Initialized() (bool, error) {
-	v, err := c.Exists(context.TODO(), c.InitKey()).Result()
+	v, err := c.Client.Exists(context.TODO(), c.InitKey()).Result()
 	if err != nil {
 		return false, err
 	}
@@ -383,7 +383,7 @@ func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 		ticker.Stop()
 		close(cacheinit)
 
-		if err := c.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil && resulterr == nil {
+		if err := c.Client.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil && resulterr == nil {
 			zl.Warn().Str("component", "{{$storeName}}").Msg("could not mark cache as initialized")
 			resulterr = err
 		}
@@ -416,8 +416,8 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	{{ if .GetAll -}}
 	// Primary index for all objects set: people.v1.all=all
 	// ETag index for all objects set: people.v1.etag.all=all
-	c.SAdd(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All), obj.{{$ID}})
-	err := c.Incr(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Err()
+	c.Client.SAdd(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All), obj.{{$ID}})
+	err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Err()
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
@@ -455,8 +455,8 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	// Optional set index: {{.Name}}
 	if {{ .Keys | CheckOptional "obj" | Join " && " }} {
 		idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-		c.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
-		err := c.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
+		c.Client.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
+		err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 		if err != nil {
 			return common.NewErrorE(http.StatusInternalServerError, err)
 		}
@@ -464,8 +464,8 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	{{else -}}
 	// Set index: {{.Name}}
 	idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-	c.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
-	err := c.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
+	c.Client.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
+	err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
@@ -481,7 +481,7 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{if .Optional -}}
 		if {{ .Keys | CheckOptional "obj" | Join " && " }} && {{ .Keys | CheckOptional "orig" | Join " && " }} && {{ .Keys | CompareFields "obj" "orig" " != " | Join " && "}} {
 			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-			err := c.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
+			err := c.Client.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
 			}
@@ -489,7 +489,7 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{- else -}}
 		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " && " }} {
 			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-			err := c.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
+			err := c.Client.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
 			}
@@ -503,8 +503,8 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{ if .Optional -}}
 		if {{ .Keys | CheckOptional "obj" | Join " && " }} && {{ .Keys | CheckOptional "orig" | Join " && " }} && {{ .Keys | CompareFields "obj" "orig" " != " | Join " && "}} {
 			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-			c.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
-			err := c.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
+			c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
+			err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
 			}
@@ -512,8 +512,8 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{- else -}}
 		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " && " }} {
 			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-			c.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
-			err := c.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
+			c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
+			err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
 			}
@@ -530,7 +530,7 @@ func (c {{$cacheName}}) put(fullKey string, co {{.PrivateTypeName}}CacheObject, 
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
-	cmd := c.Set(context.TODO(), fullKey, data, expiration)
+	cmd := c.Client.Set(context.TODO(), fullKey, data, expiration)
 	if _, err := cmd.Result(); err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
@@ -538,7 +538,7 @@ func (c {{$cacheName}}) put(fullKey string, co {{.PrivateTypeName}}CacheObject, 
 }
 
 func (c {{$cacheName}}) get(keyName string, key string) (*models.{{.DbTypeName}}, string, *common.Error) {
-	cmd := c.Get(context.TODO(), c.Key(keyName, key))
+	cmd := c.Client.Get(context.TODO(), c.Key(keyName, key))
 	data, err := cmd.Result()
 	if err != nil && err == redis.Nil {
 		return nil, "", common.NewErrorE(http.StatusNotFound, err)
@@ -567,7 +567,7 @@ func (c *{{$cacheName}}) GetBy{{.Name}}({{ $keyList }} string) (*models.{{$model
 // GetAllBy{{.Name}} fetches all cached {{$modelName}}s by their {{.Key}}
 func (c *{{$cacheName}}) GetAllBy{{.Name}}({{$keyList}} string) ([]models.{{$modelName}}, string, *common.Error) {
 	idx := CompoundIndex({{$keyList}})
-	keys, err := c.SMembers(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Result()
+	keys, err := c.Client.SMembers(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Result()
 	if err != nil {
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
@@ -581,7 +581,7 @@ func (c *{{$cacheName}}) GetAllBy{{.Name}}({{$keyList}} string) ([]models.{{$mod
 		objs = append(objs, *obj)
 	}
 
-	etag, err := c.Get(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Result()
+	etag, err := c.Client.Get(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Result()
 	if err != nil {
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
@@ -593,7 +593,7 @@ func (c *{{$cacheName}}) GetAllBy{{.Name}}({{$keyList}} string) ([]models.{{$mod
 {{ if .GetAll -}}
 // GetAll fetches all cached {{$modelName}}s
 func (c *{{$cacheName}}) GetAll() ([]models.{{$modelName}}, string, *common.Error) {
-	keys, err := c.SMembers(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All)).Result()
+	keys, err := c.Client.SMembers(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All)).Result()
 	if err != nil {
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
@@ -607,7 +607,7 @@ func (c *{{$cacheName}}) GetAll() ([]models.{{$modelName}}, string, *common.Erro
 		objs = append(objs, *obj)
 	}
 
-	etag, err := c.Get(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Result()
+	etag, err := c.Client.Get(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Result()
 	if err != nil {
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
@@ -642,14 +642,14 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 	{{end -}}
 	{{end}}
 
-	err = c.Del(context.TODO(), keys...).Err()
+	err = c.Client.Del(context.TODO(), keys...).Err()
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
 	{{if .GetAll -}}
-	c.SRem(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All), {{$ID | ToLower}})
-	err = c.Incr(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Err()
+	c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All), {{$ID | ToLower}})
+	err = c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Err()
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
@@ -660,16 +660,16 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 	{{ if .Optional -}}
 	if {{ .Keys | CheckOptional "o" | Join " && " }} {
 		idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
-		c.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
-		err := c.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
+		c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
+		err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 		if err != nil {
 			return common.NewErrorE(http.StatusInternalServerError, err)
 		}
 	}
 	{{- else -}}
 	idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
-	c.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
-	err = c.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
+	c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
+	err = c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
