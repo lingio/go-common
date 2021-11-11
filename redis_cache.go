@@ -16,6 +16,7 @@ import (
 var ErrInvalidRedisConfig = errors.New("redis cache config is not valid")
 
 const redisCacheKeyInitialized = "initialized"
+const redisCacheKeyInitializing = "initializing"
 
 // RedisSetupErr wraps an underlying error that occured during cache setup.
 type RedisSetupErr struct {
@@ -61,7 +62,7 @@ func NewRedisCache(client *redis.Client, name, version string) *RedisCache {
 		WarmedUp: 0,
 		redsync:  redsync.New(goredis.NewPool(client)),
 	}
-	rc.initLock = rc.redsync.NewMutex(rc.InitKey(), redsync.WithExpiry(10*time.Second))
+	rc.initLock = rc.redsync.NewMutex(rc.baseKey(redisCacheKeyInitializing), redsync.WithExpiry(10*time.Second))
 	return rc
 }
 
