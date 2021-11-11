@@ -36,8 +36,8 @@ type SecondaryIndex struct {
 }
 
 type indexField struct {
-	Key      string
-	Optional bool
+	Key, Param string
+	Optional   bool
 }
 
 type StorageSpec struct {
@@ -101,11 +101,11 @@ func main() {
 				zl.Fatal().Msg("unknown index 'type': " + idx.Type)
 			}
 			if idx.Key == "" && len(idx.Keys) == 0 {
-				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: missing 'key' or 'keyes'", b.TypeName, i))
+				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: missing 'key' or 'keys'", b.TypeName, i))
 			} else if idx.Key != "" && len(idx.Keys) > 0 {
-				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: cannot use both 'key' and 'keyes'", b.TypeName, i))
+				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: cannot use both 'key' and 'keys'", b.TypeName, i))
 			} else if idx.Key != "" && len(idx.Keys) == 0 {
-				idx.Keys = append(idx.Keys, indexField{idx.Key, false})
+				idx.Keys = append(idx.Keys, indexField{Key: idx.Key, Param: "", Optional: false})
 			}
 			// Ensure key is exported.
 			for _, field := range idx.Keys {
@@ -250,10 +250,16 @@ func prettyPrint(i interface{}) string {
 	return string(s)
 }
 
-func camelCaseKey(keyes []indexField) []string {
+func camelCaseKey(keys []indexField) []string {
 	var s []string
-	for _, idx := range keyes {
-		s = append(s, strings.ToLower(idx.Key[0:1])+idx.Key[1:])
+	for _, idx := range keys {
+		var p string
+		if idx.Param != "" {
+			p = idx.Param
+		} else {
+			p = idx.Key
+		}
+		s = append(s, strings.ToLower(p[0:1])+p[1:])
 	}
 	return s
 }
@@ -301,18 +307,10 @@ func checkOptionalField(on string, fields []indexField) []string {
 }
 
 // orig obj != key => orig.key != obj.key
-func compareFields(a, b, comp string, keyes []indexField) []string {
+func compareFields(a, b, comp string, keys []indexField) []string {
 	var s []string
-	for _, idx := range keyes {
+	for _, idx := range keys {
 		s = append(s, idx.materialize(a)+comp+idx.materialize(b))
-	}
-	return s
-}
-
-func zipStrings(a, b []string) []string {
-	var s []string
-	for i := range a {
-		s = append(s, a[i]+b[i])
 	}
 	return s
 }
