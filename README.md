@@ -1,5 +1,19 @@
 go-common
 
+## redis cache
+
+```golang
+// Basic client: connect to redis addr directly
+// redisAddr = ":6769", masterName "", serviceDNS = ""
+// Failover client: lookup sentinels and create failover client
+// redisAddr = "", masterName != "", serviceDNS != ""
+redisClient, err := common.SetupRedisClient(redisAddr, masterName, serviceDNS)
+if err != nil {
+  log.Fatalln(err)
+}
+redisCache := common.NewRedisCache(redisClient, "x-cache-it", "v2")
+```
+
 ## storagegen
 
 1. `cd storagegen`
