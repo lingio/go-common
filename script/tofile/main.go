@@ -37,15 +37,7 @@ func main() {
 		} else if err == io.EOF {
 			break
 		}
-
-		key := obj.Key
-		ext := path.Ext(obj.Key)
-		if ext != "" {
-			key = key[0 : len(key)-len(ext)]
-		}
-		filename := *renameFmt
-		filename = strings.ReplaceAll(filename, "{KEY}", key)
-		filename = strings.ReplaceAll(filename, "{EXT}", ext)
+		filename := rename(*renameFmt, obj.Key)
 		if err := os.WriteFile(path.Join(*rootPath, filename), obj.Data, os.ModePerm); err != nil {
 			trap(err)
 		}
@@ -56,4 +48,18 @@ func trap(err error) {
 	if err != nil {
 		log.Fatalln(err)
 	}
+}
+
+func rename(format, key string) string {
+	if format == "{KEY}{EXT}" {
+		return key
+	}
+	ext := path.Ext(key)
+	if ext != "" {
+		key = key[0 : len(key)-len(ext)]
+	}
+	filename := format
+	filename = strings.ReplaceAll(filename, "{KEY}", key)
+	filename = strings.ReplaceAll(filename, "{EXT}", ext)
+	return filename
 }
