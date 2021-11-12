@@ -24,6 +24,7 @@ type BucketSpec struct {
 	Version          string
 	IdName           *string
 	GetAll           *bool
+	FilenameFormat   string
 	Config           *common.ObjectStoreConfig
 }
 
@@ -138,6 +139,7 @@ func main() {
 			Version:          b.Version,
 			Config:           config,
 			GetAll:           getAll,
+			FilenameFormat:   b.FilenameFormat,
 		})
 
 		// go codeconv uses _ in filenames
@@ -203,6 +205,7 @@ type TmplParams struct {
 	ServiceName      string
 	IdName           string
 	Version          string
+	FilenameFormat   string
 	SecondaryIndexes []SecondaryIndex
 	Config           common.ObjectStoreConfig
 	GetAll           bool

@@ -25,12 +25,13 @@ redisCache := common.NewRedisCache(redisClient, "x-cache-it", "v2")
   "serviceName": "person-service",
   "buckets": [
     {
-      "typeName": "People",     // final type name: {typeName}Store
-      "dbTypeName": "DbPerson", // stored and returned type: models.{dbTypeName}
-      "bucketName": "people",   // object store bucket name
-      "version": "v1",          // change this if the stored data structure is changed
-      "getAll": false,          // enable to generate code for listing all objects
-      "secondaryIndexes": [     // generate additional Get methods
+      "typeName": "People",       // final type name: {typeName}Store
+      "dbTypeName": "DbPerson",   // stored and returned type: models.{dbTypeName}
+      "bucketName": "people",     // object store bucket name
+      "version": "v1",            // change this if the stored data structure is changed
+      "getAll": false,            // enable to generate code for listing all objects
+      "filenameFormat": "%s.json" // fmt.Sprintf format, must have exactly one %s (ID)
+      "secondaryIndexes": [       // generate additional Get methods
       	// GetByPhone, builds index on models.{dbTypeName}.Phone
         { "key": "Phone", "type": "unique" },
         // GetByEmail, builds index on *models.{dbTypeName}.Email if it not nil
