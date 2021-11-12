@@ -80,14 +80,14 @@ redisCache := common.NewRedisCache(redisClient, "x-cache-it", "v2")
 # assuming encrypted bucket
 $ MINIO_SECRET=minioadmin go run ./script/objcopy --from=../service/config/local-stage.json --bucket=people | \
 ENCRYPTION_KEY=256bit-key go run ./script/encrypt --decrypt | \
-go run ./script/tofile --root=./files
+go run ./script/tofile --root=./files --rename="people-data-{KEY}{EXT}"
 ```
 
 ##### Write encrypted objects to an encrypted object storage from disk
 
 ```bash
 # assuming encrypted bucket
-$ ls -1 ./files | gp run ./script/fromfile | \
+$ find ../files -maxdepth 1 -not -type d | gp run ./script/fromfile | \
 ENCRYPTION_KEY=256bit-key go run ./script/encrypt | \
 MINIO_SECRET=minioadmin go run ./script/objcopy --to=../service/config/local-stage.json --bucket=people
 ```

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/lingio/go-common"
 )
@@ -23,6 +24,7 @@ type Object struct {
 // pipe Objects into | go run ./script/tofile --root=./
 func main() {
 	rootPath := flag.String("root", "./", "path to root folder where to output files")
+	renameFmt := flag.String("rename", "{KEY}{EXT}", "rename filename using object key and parsed extension")
 	flag.Parse()
 
 	trap(os.MkdirAll(*rootPath, 0755))
@@ -35,7 +37,16 @@ func main() {
 		} else if err == io.EOF {
 			break
 		}
-		if err := os.WriteFile(path.Join(*rootPath, obj.Key), obj.Data, os.ModePerm); err != nil {
+
+		key := obj.Key
+		ext := path.Ext(obj.Key)
+		if ext != "" {
+			key = key[0 : len(key)-len(ext)]
+		}
+		filename := *renameFmt
+		filename = strings.ReplaceAll(filename, "{KEY}", key)
+		filename = strings.ReplaceAll(filename, "{EXT}", ext)
+		if err := os.WriteFile(path.Join(*rootPath, filename), obj.Data, os.ModePerm); err != nil {
 			trap(err)
 		}
 	}

@@ -19,7 +19,7 @@ type Object struct {
 //
 // Usage:
 //
-// ls -1 people/*.json | go run ./script/fromfile \
+// find ../people-files -maxdepth 1 -not -type d | go run ./script/fromfile \
 //	go run ./script/tofile --root=dir
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
