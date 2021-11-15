@@ -9,6 +9,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
+	"strings"
 
 	"github.com/lingio/go-common"
 	"github.com/minio/minio-go/v7"
@@ -40,6 +42,7 @@ func main() {
 	srcEnv := flag.String("from", "", "json config file with minio source to read from")
 	dstEnv := flag.String("to", "", "json config file with minio target to write to")
 	bucket := flag.String("bucket", "", "bucket to read from or write to")
+	renameFmt := flag.String("rename", "{KEY}{EXT}", "rename object using key and parsed extension")
 	minioSecret := os.Getenv("MINIO_SECRET")
 	flag.Parse()
 
@@ -102,6 +105,7 @@ func main() {
 				} else if err == io.EOF {
 					break
 				}
+				obj.Key = rename(*renameFmt, obj.Key)
 				objchan <- obj
 			}
 		}()
@@ -182,4 +186,18 @@ func trap(err error) {
 	if err != nil {
 		log.Fatalln(err)
 	}
+}
+
+func rename(format, key string) string {
+	if format == "{KEY}{EXT}" {
+		return key
+	}
+	ext := path.Ext(key)
+	if ext != "" {
+		key = key[0 : len(key)-len(ext)]
+	}
+	filename := format
+	filename = strings.ReplaceAll(filename, "{KEY}", key)
+	filename = strings.ReplaceAll(filename, "{EXT}", ext)
+	return filename
 }

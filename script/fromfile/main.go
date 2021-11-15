@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"log"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/lingio/go-common"
 )
@@ -19,9 +21,12 @@ type Object struct {
 //
 // Usage:
 //
-// ls -1 people/*.json | go run ./script/fromfile \
+// find ../people-files -maxdepth 1 -not -type d | go run ./script/fromfile \
 //	go run ./script/tofile --root=dir
 func main() {
+	renameFmt := flag.String("rename", "{KEY}{EXT}", "set object key to filename and parsed extension")
+	flag.Parse()
+
 	scanner := bufio.NewScanner(os.Stdin)
 	encoder := json.NewEncoder(os.Stdout)
 
@@ -36,7 +41,7 @@ func main() {
 		// construct shared object structure
 		obj := Object{
 			ObjectInfo: common.ObjectInfo{
-				Key: path.Base(filename),
+				Key: rename(*renameFmt, path.Base(filename)),
 			},
 			Data: data,
 		}
@@ -49,4 +54,18 @@ func trap(err error) {
 	if err != nil {
 		log.Fatalln(err)
 	}
+}
+
+func rename(format, key string) string {
+	if format == "{KEY}{EXT}" {
+		return key
+	}
+	ext := path.Ext(key)
+	if ext != "" {
+		key = key[0 : len(key)-len(ext)]
+	}
+	filename := format
+	filename = strings.ReplaceAll(filename, "{KEY}", key)
+	filename = strings.ReplaceAll(filename, "{EXT}", ext)
+	return filename
 }
