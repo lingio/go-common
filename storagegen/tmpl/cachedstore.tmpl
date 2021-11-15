@@ -113,10 +113,13 @@ func New{{$storeName}}(mc *minio.Client, cache {{.TypeName}}Cache, serviceKey st
 	return db, nil
 }
 
-
 // filename map typed values to a string
 func (s *{{$storeName}}) filename(id string) string {
-	return fmt.Sprintf("%s.json", id)
+	{{ if .FilenameFormat -}}
+	return fmt.Sprintf("{{.FilenameFormat}}", id)
+	{{- else -}}
+	return id + ".json"
+	{{- end }}
 }
 
 //=============================================================================

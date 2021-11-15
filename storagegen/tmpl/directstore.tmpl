@@ -55,8 +55,12 @@ func New{{$storeName}}(mc *minio.Client, serviceKey string) (*{{$storeName}}, er
 }
 
 // filename map typed values to a string
-func (ps *{{$storeName}}) filename(id string) string {
-	return fmt.Sprintf("%s.json", id)
+func (s *{{$storeName}}) filename(id string) string {
+	{{ if .FilenameFormat -}}
+	return fmt.Sprintf("{{.FilenameFormat}}", id)
+	{{- else -}}
+	return id + ".json"
+	{{- end }}
 }
 
 //=============================================================================
