@@ -173,10 +173,9 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
 	}
-	info, err := s.backend.PutObject(ctx, s.filename(obj.{{.IdName}}), data)
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
+	info, lerr := s.backend.PutObject(ctx, s.filename(obj.{{.IdName}}), data)
+	if lerr != nil {
+		return lerr.Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
 	}
 
 	var expiration time.Duration
@@ -189,8 +188,7 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 // Delete
 func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
 	if err := s.backend.DeleteObject(ctx, s.filename(id)); err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", id).Msg("failed to delete object in minio")
+		return err.Str("ID", id).Msg("failed to delete object in minio")
 	}
 	return s.cache.Delete(id)
 }
