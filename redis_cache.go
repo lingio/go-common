@@ -114,13 +114,6 @@ func (c RedisCache) Live() bool {
 	} else if val != "PONG" {
 		return false
 	}
-
-	if val, err := c.Ping(context.TODO()).Result(); err != nil {
-		return false
-	} else if val != "PONG" {
-		return false
-	}
-
 	return true
 }
 
