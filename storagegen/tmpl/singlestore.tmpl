@@ -10,11 +10,9 @@ import (
 
 	"github.com/lingio/go-common"
 	"github.com/minio/minio-go/v7"
-	uuid "github.com/satori/go.uuid"
 )
 
 {{$modelName := .DbTypeName -}}
-{{$ID := .IdName -}}
 {{$storeName := printf "%sStore" .TypeName -}}
 
 var {{$storeName}}Config common.ObjectStoreConfig
@@ -51,12 +49,12 @@ func New{{$storeName}}(mc *minio.Client, serviceKey string) (*{{$storeName}}, er
 	return db, nil
 }
 
-// filename map typed values to a string
-func (s *{{$storeName}}) filename(id string) string {
+// filename returns the name of the one file in this store
+func (s *{{$storeName}}) filename() string {
 	{{ if .FilenameFormat -}}
-	return fmt.Sprintf("{{.FilenameFormat}}", id)
+	return "{{.FilenameFormat}}"
 	{{- else -}}
-	return id + ".json"
+	panic("no filename configured")
 	{{- end }}
 }
 
@@ -66,19 +64,15 @@ func (s *{{$storeName}}) filename(id string) string {
 
 // Create attempts to store the provided object in store.
 func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, *common.Error) {
-	if obj.{{.IdName}} != "" {
-		// check that the object doesn't exist
-		o, _, err := s.Get(obj.{{.IdName}})
-		if err != nil && err.HttpStatusCode != http.StatusNotFound {
-			return nil, common.NewErrorE(http.StatusInternalServerError, err).
-				Str("ID", obj.{{.IdName}}).Msg("failed query for object")
-		}
-		if o != nil { // object exists!
-			return nil, common.NewError(http.StatusBadRequest).
-				Str("ID", obj.{{.IdName}}).Msg("an object with this ID is already stored in the database")
-		}
-	} else {
-		obj.{{.IdName}} = uuid.NewV4().String()
+	// check that the object doesn't exist
+	o, _, err := s.Get()
+	if err != nil && err.HttpStatusCode != http.StatusNotFound {
+		return nil, common.NewErrorE(http.StatusInternalServerError, err).
+			Msg("failed query for object")
+	}
+	if o != nil { // object exists!
+		return nil, common.NewError(http.StatusBadRequest).
+			Msg("an object is already stored in the database")
 	}
 	if err := s.put(ctx, obj); err != nil {
 		return nil, err
@@ -87,16 +81,16 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 }
 
 
-// Get attempts to load an object with the specified ID from the store.
-func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
-	data, info, lerr := s.backend.GetObject(s.filename(id))
+// Get attempts to load the singleton from the store.
+func (s *{{$storeName}}) Get() (*models.{{.DbTypeName}}, string, *common.Error) {
+	data, info, lerr := s.backend.GetObject(s.filename())
 	if lerr != nil {
-		return nil, "", lerr
+		return nil, "", lerr.Msg("failed to get from minio")
 	}
 	obj := &models.{{.DbTypeName}}{}
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", id).Msg("failed to unmarshal json")
+			Msg("failed to unmarshal json")
 	}
 	return obj, info.ETag, nil
 }
@@ -111,19 +105,18 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
+			Msg("failed to marshal json")
 	}
-	_, lerr := s.backend.PutObject(ctx, s.filename(obj.{{.IdName}}), data)
-	if lerr != nil {
-		return lerr.Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
+	if _, lerr := s.backend.PutObject(ctx, s.filename(), data); lerr != nil {
+		return lerr.Msg("failed to write to minio")
 	}
 	return nil
 }
 
 // Delete
-func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
-	if err := s.backend.DeleteObject(ctx, s.filename(id)); err != nil {
-		return err.Str("ID", id).Msg("failed to delete object in minio")
+func (s *{{$storeName}}) Delete(ctx context.Context) *common.Error {
+	if err := s.backend.DeleteObject(ctx, s.filename()); err != nil {
+		return err.Msg("failed to delete object in minio")
 	}
 	return nil
 }

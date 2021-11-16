@@ -71,10 +71,9 @@ func (s *{{$storeName}}) Create(ctx context.Context, blob models.{{.DbTypeName}}
 
 // Get attempts to load an byte blob with the specified ID from the store.
 func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
-	data, info, err := s.backend.GetObject(id)
+	data, info, err := s.backend.GetObject(s.filename(id))
 	if err != nil {
-		return nil, "", common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", id).Msg("failed to get from minio")
+		return nil, "", err
 	}
 	return (*models.{{.DbTypeName}})(&data), info.ETag, nil
 }
@@ -86,10 +85,8 @@ func (s *{{$storeName}}) Put(ctx context.Context, id string, blob models.{{.DbTy
 
 // put does the heavy lifting for both Put and Create methods.
 func (s *{{$storeName}}) put(ctx context.Context, id string, blob models.{{.DbTypeName}}) *common.Error {
-	_, err := s.backend.PutObject(ctx, s.filename(id), blob)
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", id).Msg("failed to write to minio")
+	if _, err := s.backend.PutObject(ctx, s.filename(id), blob); err != nil {
+		return err.Str("ID", id).Msg("failed to write to minio")
 	}
 	return nil
 }

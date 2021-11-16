@@ -11,15 +11,6 @@ import (
 	"github.com/minio/minio-go/v7/pkg/tags"
 )
 
-func minioErrToCommonErr(err error) *common.Error {
-	minioErr := err.(minio.ErrorResponse)
-	return common.NewErrorE(minioErr.StatusCode, err).
-		Str("minio.Message", minioErr.Message).
-		Str("minio.Code", minioErr.Code).
-		Str("minio.BucketName", minioErr.BucketName).
-		Str("minio.Key", minioErr.Key)
-}
-
 func writePartnerBucketETag(c *minio.Client, bucketName string, partnerID string, etag string) *common.Error {
 	// Write ETag
 	bucketTags, err := tags.MapToBucketTags(map[string]string{fmt.Sprintf("%s-etag", partnerID): etag})

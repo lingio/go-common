@@ -7,6 +7,7 @@ import (
 	"flag"
 	"io"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/lingio/go-common"
@@ -70,28 +71,28 @@ func trap(err error) {
 }
 
 // GetObject is supposed to be called when we're trying to decrypt an encrypted stdin.
-func (ds dummyStore) GetObject(filename string) ([]byte, common.ObjectInfo, error) {
+func (ds dummyStore) GetObject(filename string) ([]byte, common.ObjectInfo, *common.Error) {
 	var obj Object
 	if err := ds.decoder.Decode(&obj); err != nil {
-		return nil, common.ObjectInfo{}, err
+		return nil, common.ObjectInfo{}, common.NewErrorE(http.StatusInternalServerError, err)
 	}
 	return obj.Data, obj.ObjectInfo, nil
 }
 
 // PutObject is supposed to be called when we're trying to encrypt a plain-text stdin.
-func (ds dummyStore) PutObject(ctx context.Context, file string, data []byte) (common.ObjectInfo, error) {
+func (ds dummyStore) PutObject(ctx context.Context, file string, data []byte) (common.ObjectInfo, *common.Error) {
 	if err := ds.encoder.Encode(Object{
 		Data: data,
 		ObjectInfo: common.ObjectInfo{
 			Key: file,
 		},
 	}); err != nil {
-		return common.ObjectInfo{}, err
+		return common.ObjectInfo{}, common.NewErrorE(http.StatusInternalServerError, err)
 	}
 	return common.ObjectInfo{}, nil
 }
 
-func (ds dummyStore) DeleteObject(ctx context.Context, file string) error {
+func (ds dummyStore) DeleteObject(ctx context.Context, file string) *common.Error {
 	return nil
 }
 func (ds dummyStore) ListObjects(ctx context.Context) <-chan common.ObjectInfo {
