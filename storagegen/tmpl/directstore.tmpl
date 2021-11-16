@@ -5,15 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/lingio/{{.ServiceName}}/models"
 
 	"github.com/lingio/go-common"
 	"github.com/minio/minio-go/v7"
 	uuid "github.com/satori/go.uuid"
-
-	zl "github.com/rs/zerolog/log"
 )
 
 {{$modelName := .DbTypeName -}}
@@ -105,6 +102,34 @@ func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *commo
 	return obj, info.ETag, nil
 }
 
+{{if .GetAll -}}
+// GetAll loads all objects from this store.
+func (s *{{$storeName}}) GetAll() (_ []models.{{.DbTypeName}}, _ string, reserr *common.Error) {
+	var objs []models.{{.DbTypeName}}
+	for info := range s.backend.ListObjects(context.TODO()) {
+		// If we got an error previously, skip any remaining objects.
+		if reserr != nil {
+			continue
+		}
+
+		// NOTE(Axel): Ignoring etag for now
+		obj, _, err := s.Get(info.Key)
+
+		// Avoid returning early so we can drain channel .
+		if err != nil {
+			if reserr == nil {
+				reserr = common.NewErrorE(http.StatusInternalServerError, err).Str("ID", info.Key).Msg("failed to get object from store")
+			}
+			continue
+		}
+
+		objs = append(objs, *obj)
+	}
+	return objs, "", reserr
+}
+{{- end }}
+
+
 // Put updates or creates the object in both cache and backing store.
 func (s *{{$storeName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
 	return s.put(ctx, obj)
@@ -117,7 +142,7 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
 	}
-	info, err := s.backend.PutObject(ctx, s.filename(obj.{{.IdName}}), data)
+	_, err = s.backend.PutObject(ctx, s.filename(obj.{{.IdName}}), data)
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
