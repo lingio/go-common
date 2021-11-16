@@ -5,15 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/lingio/{{.ServiceName}}/models"
 
 	"github.com/lingio/go-common"
 	"github.com/minio/minio-go/v7"
 	uuid "github.com/satori/go.uuid"
-
-	zl "github.com/rs/zerolog/log"
 )
 
 {{$modelName := .DbTypeName -}}
@@ -64,7 +61,7 @@ func (s *{{$storeName}}) filename(id string) string {
 }
 
 //=============================================================================
-// Lingio store implementation
+// Store implementation
 //=============================================================================
 
 // Create attempts to store the provided object in store.
