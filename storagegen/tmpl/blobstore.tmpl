@@ -73,8 +73,7 @@ func (s *{{$storeName}}) Create(ctx context.Context, blob models.{{.DbTypeName}}
 func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
 	data, info, err := s.backend.GetObject(id)
 	if err != nil {
-		return nil, "", common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", id).Msg("failed to get from minio")
+		return nil, "", err
 	}
 	return (*models.{{.DbTypeName}})(&data), info.ETag, nil
 }
@@ -102,4 +101,3 @@ func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
 	}
 	return nil
 }
-
