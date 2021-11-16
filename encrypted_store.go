@@ -38,7 +38,7 @@ func NewEncryptedStore(backend LingioStore, cipherKey string) (*EncryptedStore, 
 	}, nil
 }
 
-func (es *EncryptedStore) GetObject(file string) ([]byte, ObjectInfo, error) {
+func (es *EncryptedStore) GetObject(file string) ([]byte, ObjectInfo, *Error) {
 	data, info, err := es.backend.GetObject(es.encryptFilename(file))
 	if err != nil {
 		return nil, ObjectInfo{}, err
@@ -48,7 +48,7 @@ func (es *EncryptedStore) GetObject(file string) ([]byte, ObjectInfo, error) {
 	return data, info, nil
 }
 
-func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byte) (ObjectInfo, error) {
+func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byte) (ObjectInfo, *Error) {
 	es.cipher.Encrypt(data, data)
 	info, err := es.backend.PutObject(ctx, es.encryptFilename(file), data)
 	if err != nil {
@@ -58,7 +58,7 @@ func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byt
 	return info, nil
 }
 
-func (es EncryptedStore) DeleteObject(ctx context.Context, file string) error {
+func (es EncryptedStore) DeleteObject(ctx context.Context, file string) *Error {
 	return es.backend.DeleteObject(ctx, es.encryptFilename(file))
 }
 

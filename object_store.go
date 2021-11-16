@@ -3,9 +3,9 @@ package common
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
@@ -33,7 +33,7 @@ type ObjectStoreConfig struct {
 
 // NewObjectStore attempts to initialize a new bucket if it does not already exist.
 func NewObjectStore(mc *minio.Client, bucketName string, config ObjectStoreConfig) (*ObjectStore, error) {
-	if err := checkBucket(mc, bucketName, config); err != nil {
+	if err := checkBucket(mc, bucketName); err != nil {
 		return nil, err
 	}
 
@@ -45,27 +45,27 @@ func NewObjectStore(mc *minio.Client, bucketName string, config ObjectStoreConfi
 }
 
 // GetObject attempts to get metadata and read data from the specified file.
-func (os ObjectStore) GetObject(file string) ([]byte, ObjectInfo, error) {
+func (os ObjectStore) GetObject(file string) ([]byte, ObjectInfo, *Error) {
 	object, err := os.mc.GetObject(context.Background(), os.bucketName, file, minio.GetObjectOptions{
 		// TODO: add support for VersionID ?
 	})
 	if err != nil {
-		return nil, ObjectInfo{}, fmt.Errorf("get object: %w", err)
+		return nil, ObjectInfo{}, minioErrToObjectStoreError(err)
 	}
 	data, err := ioutil.ReadAll(object)
 	if err != nil {
-		return nil, ObjectInfo{}, fmt.Errorf("read object: %w", err)
+		return nil, ObjectInfo{}, objectStoreErrorE(http.StatusInternalServerError, os.bucketName, "read object", err).Str("minio.Key", file)
 	}
 	stat, err := object.Stat()
 	if err != nil {
-		return nil, ObjectInfo{}, fmt.Errorf("stat object: %w", err)
+		return nil, ObjectInfo{}, minioErrToObjectStoreError(err)
 	}
 
 	return data, objectInfoFromMinio(stat), nil
 }
 
 // PutObject uploads the object with pre-configured content type and content disposition.
-func (os ObjectStore) PutObject(ctx context.Context, file string, data []byte) (_ ObjectInfo, diderr error) {
+func (os ObjectStore) PutObject(ctx context.Context, file string, data []byte) (_ ObjectInfo, diderr *Error) {
 	defer os.auditLog(ctx, "Put", file, diderr)
 	info, err := os.mc.PutObject(ctx, os.bucketName, file, bytes.NewBuffer(data), int64(len(data)), minio.PutObjectOptions{
 		ContentType:        os.config.ContentType,
@@ -73,7 +73,7 @@ func (os ObjectStore) PutObject(ctx context.Context, file string, data []byte) (
 		// NOTE: Also add support for ContentEncoding ?
 	})
 	if err != nil {
-		return ObjectInfo{}, err
+		return ObjectInfo{}, minioErrToObjectStoreError(err)
 	}
 	return ObjectInfo{
 		ETag:       info.ETag,
@@ -83,13 +83,13 @@ func (os ObjectStore) PutObject(ctx context.Context, file string, data []byte) (
 }
 
 // DeleteObject will attempt to remove the requested file/object.
-func (os ObjectStore) DeleteObject(ctx context.Context, file string) (diderr error) {
+func (os ObjectStore) DeleteObject(ctx context.Context, file string) (diderr *Error) {
 	defer os.auditLog(ctx, "Delete", file, diderr)
 	err := os.mc.RemoveObject(ctx, os.bucketName, file, minio.RemoveObjectOptions{
 		// TODO: add support for VersionID ?
 	})
 	if err != nil {
-		return err
+		return minioErrToObjectStoreError(err)
 	}
 	return nil
 }
@@ -115,18 +115,6 @@ func (os ObjectStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
 	return objects
 }
 
-// checkBucket ensures that a bucket exists and is configured as requested.
-func checkBucket(mc *minio.Client, bucketName string, config ObjectStoreConfig) error {
-	exists, err := mc.BucketExists(context.Background(), bucketName)
-	if err != nil {
-		return fmt.Errorf("check bucket: %s: %w", bucketName, err)
-	}
-	if !exists {
-		return fmt.Errorf("check bucket: %s does not exist", bucketName)
-	}
-	return nil
-}
-
 func (os ObjectStore) auditLog(ctx context.Context, action, object string, err error) {
 	ctx = WithBucket(ctx, os.bucketName)
 	ctx = WithAction(ctx, action)
@@ -134,4 +122,37 @@ func (os ObjectStore) auditLog(ctx context.Context, action, object string, err e
 	if err == nil {
 		LogAuditEvent(ctx)
 	}
+}
+
+// checkBucket ensures that a bucket exists and is configured as requested.
+func checkBucket(mc *minio.Client, bucketName string) *Error {
+	exists, err := mc.BucketExists(context.Background(), bucketName)
+	if err != nil {
+		return minioErrToObjectStoreError(err)
+	}
+	if !exists {
+		return objectStoreError(http.StatusNotFound, bucketName, "check bucket: bucket does not exist")
+	}
+	return nil
+}
+
+func minioErrToObjectStoreError(err error) *Error {
+	minioErr := err.(minio.ErrorResponse)
+	return NewErrorE(minioErr.StatusCode, err).
+		Str("minio.Message", minioErr.Message).
+		Str("minio.Code", minioErr.Code).
+		Str("minio.BucketName", minioErr.BucketName).
+		Str("minio.Key", minioErr.Key)
+}
+
+func objectStoreError(code int, bucket, message string) *Error {
+	return NewError(http.StatusNotFound).
+		Str("minio.BucketName", bucket).
+		Str("minio.Message", message)
+}
+
+func objectStoreErrorE(code int, bucket, message string, err error) *Error {
+	return NewErrorE(http.StatusNotFound, err).
+		Str("minio.BucketName", bucket).
+		Str("minio.Message", message)
 }
