@@ -1,0 +1,139 @@
+package storage
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+
+	"github.com/lingio/{{.ServiceName}}/models"
+
+	"github.com/lingio/go-common"
+	"github.com/minio/minio-go/v7"
+)
+
+{{$modelName := .DbTypeName -}}
+{{$storeName := printf "%sStore" .TypeName -}}
+
+var {{$storeName}}Config common.ObjectStoreConfig
+func init() {
+	err := json.Unmarshal([]byte(`
+{{.Config | PrettyPrint}}
+	`), &{{$storeName}}Config)
+	if err != nil {
+		panic(fmt.Errorf("error parsing store config: %w", err))
+	}
+}
+
+type {{$storeName}} struct {
+	backend common.LingioStore
+}
+
+// New{{$storeName}} configures a new store and initializes the provided cache if required.
+func New{{$storeName}}(mc *minio.Client, serviceKey string) (*{{$storeName}}, error) {
+	// DefaultOjbectStoreConfig || deserialize
+	objectStore, err := common.NewObjectStore(mc, "{{.BucketName}}", {{$storeName}}Config)
+	if err != nil {
+		return nil, fmt.Errorf("creating object store: %w", err)
+	}
+
+	encryptedStore, err := common.NewEncryptedStore(objectStore, serviceKey)
+	if err != nil {
+		return nil, fmt.Errorf("creating encrypted store: %w", err)
+	}
+
+	db := &{{$storeName}}{
+		backend: encryptedStore,
+	}
+
+	return db, nil
+}
+
+// filename returns the name of the one file in this store
+func (s *{{$storeName}}) filename() string {
+	{{ if .FilenameFormat -}}
+	return "{{.FilenameFormat}}"
+	{{- else -}}
+	panic("no filename configured")
+	{{- end }}
+}
+
+//=============================================================================
+// Store implementation
+//=============================================================================
+
+// Create attempts to store the provided object in store.
+func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, *common.Error) {
+	// check that the object doesn't exist
+	o, _, err := s.Get()
+	if err != nil && err.HttpStatusCode != http.StatusNotFound {
+		return nil, common.NewErrorE(http.StatusInternalServerError, err).
+			Msg("failed query for object")
+	}
+	if o != nil { // object exists!
+		return nil, common.NewError(http.StatusBadRequest).
+			Msg("an object is already stored in the database")
+	}
+	if err := s.put(ctx, obj); err != nil {
+		return nil, err
+	}
+	return &obj, nil
+}
+
+
+// Get attempts to load the singleton from the store.
+func (s *{{$storeName}}) Get() (*models.{{.DbTypeName}}, string, *common.Error) {
+	data, info, lerr := s.backend.GetObject(s.filename())
+	if lerr != nil {
+		return nil, "", lerr.Msg("failed to get from minio")
+	}
+	obj := &models.{{.DbTypeName}}{}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err).
+			Msg("failed to unmarshal json")
+	}
+	return obj, info.ETag, nil
+}
+
+// Put updates or creates the object in both cache and backing store.
+func (s *{{$storeName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
+	return s.put(ctx, obj)
+}
+
+// put does the heavy lifting for both Put and Create methods.
+func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err).
+			Msg("failed to marshal json")
+	}
+	if _, lerr := s.backend.PutObject(ctx, s.filename(), data); lerr != nil {
+		return lerr.Msg("failed to write to minio")
+	}
+	return nil
+}
+
+// Delete
+func (s *{{$storeName}}) Delete(ctx context.Context) *common.Error {
+	if err := s.backend.DeleteObject(ctx, s.filename()); err != nil {
+		return err.Msg("failed to delete object in minio")
+	}
+	return nil
+}
+
+//=============================================================================
+// Extra functions from secondary indexes, passes to cache layer
+//=============================================================================
+{{range .SecondaryIndexes -}}
+{{if eq .Type "unique"}}
+// GetBy{{.Name}} fetches a single {{$modelName}} by its {{.Key}}
+func (s *{{$storeName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, string, *common.Error) {
+	panic("not yet implemented")
+}
+{{else if eq .Type "set"}}
+// GetAllBy{{.Name}} fetches all {{$modelName}}s by their {{.Key}}
+func (s *{{$storeName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, *common.Error) {
+	panic("not yet implemented")
+}
+{{end -}}
+{{end}}
