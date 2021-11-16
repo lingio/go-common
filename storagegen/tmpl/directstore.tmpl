@@ -93,9 +93,8 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 // Get attempts to load an object with the specified ID from the store.
 func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
 	data, info, err := s.backend.GetObject(id)
-	if err != nil {
-		return nil, "", common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", id).Msg("failed to get from minio")
+	if lerr != nil {
+		return nil, "", lerr
 	}
 	obj := &models.{{.DbTypeName}}{}
 	if err := json.Unmarshal(data, &obj); err != nil {
@@ -117,10 +116,9 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
 	}
-	info, err := s.backend.PutObject(ctx, s.filename(obj.{{.IdName}}), data)
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
+	_, lerr := s.backend.PutObject(ctx, s.filename(obj.{{.IdName}}), data)
+	if lerr != nil {
+		return lerr.Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
 	}
 	return nil
 }
@@ -128,8 +126,7 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 // Delete
 func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
 	if err := s.backend.DeleteObject(ctx, s.filename(id)); err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", id).Msg("failed to delete object in minio")
+		return err.Str("ID", id).Msg("failed to delete object in minio")
 	}
 	return nil
 }
