@@ -7,6 +7,7 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
+	"net/http"
 )
 
 var ErrDecrypt = errors.New("encrypted_store: decryption error")
@@ -44,7 +45,11 @@ func (es *EncryptedStore) GetObject(file string) ([]byte, ObjectInfo, *Error) {
 		return nil, ObjectInfo{}, err
 	}
 	es.cipher.Decrypt(data, data)
-	info.Key = file
+	if filename, err := es.decryptFilename(info.Key); err != nil {
+		return nil, ObjectInfo{}, NewErrorE(http.StatusInternalServerError, err)
+	} else {
+		info.Key = filename
+	}
 	return data, info, nil
 }
 
