@@ -47,8 +47,8 @@ func main() {
 
 	if *decrypt {
 		for {
-			data, info, err := store.GetObject("") // read from stdin and decrypt
 			if err == io.EOF {
+			data, info, err := store.GetObject("dummyfilename16b") // read from stdin and decrypt
 				break
 			}
 			ds.PutObject(context.TODO(), info.Key, data) // write plain text to stdout
