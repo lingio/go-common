@@ -15,6 +15,7 @@ type Error struct {
 	HttpStatusCode int
 	Trace          string
 	Map            map[string]string
+	err            error
 }
 
 func (e *Error) Error() string {
@@ -50,6 +51,7 @@ func NewErrorE(httpStatusCode int, err error) *Error {
 		HttpStatusCode: httpStatusCode,
 		Trace:          getErrorTrace(),
 		Map:            m,
+		err:            err,
 	}
 }
 
@@ -80,6 +82,10 @@ func (e *Error) ensureMapNotNil() {
 	if e.Map == nil {
 		e.Map = make(map[string]string, 0)
 	}
+}
+
+func (e *Error) Unwrap() error {
+	return e.err
 }
 
 func getErrorTrace() string {
