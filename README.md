@@ -45,20 +45,10 @@ redisCache := common.NewRedisCache(redisClient, "x-cache-it", "v2")
       // minio1.tmpl: cache + encrypted object store
       "template": "minio1.tmpl",
       "config": {
-      	// Defaults to "applicatino/json". Will be applied on object Put.
+        // Defaults to "application/json". Will be applied on object Put.
         "contentType": "application/json",
         // Defaults to "". Will be applied on object Put.
-        "contentDisposition": "",
-        // Defaults to false. Will be applied on startup.
-        "versioning": false,
-        // Defaults to false. Will be applied on startup.
-        "objectLocking": false,
-        // Defaults to nil. Will be applied on startup.
-        "lifecycle": {
-          "Rules": [
-          	// https://pkg.go.dev/github.com/minio/minio-go/v7/pkg/lifecycle#Rule
-          ]
-        }
+        "contentDisposition": ""
       }
     }
   ]
