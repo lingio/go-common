@@ -32,7 +32,7 @@ redisCache := common.NewRedisCache(redisClient, "x-cache-it", "v2")
       "getAll": false,            // enable to generate code for listing all objects
       "filenameFormat": "%s.json" // fmt.Sprintf format, must have exactly one %s (ID)
       "secondaryIndexes": [       // generate additional Get methods
-      	// GetByPhone, builds index on models.{dbTypeName}.Phone
+        // GetByPhone, builds index on models.{dbTypeName}.Phone
         { "key": "Phone", "type": "unique" },
         // GetByEmail, builds index on *models.{dbTypeName}.Email if it not nil
         { "keys": [{ "key": "Email", "optional": true }], "type": "unique" },
@@ -42,23 +42,14 @@ redisCache := common.NewRedisCache(redisClient, "x-cache-it", "v2")
         { "key": "Partner", "type": "set"}
       ],
       // directstore.tmpl: encrypted object store
-      // minio1.tmpl: cache + encrypted object store
-      "template": "minio1.tmpl",
+      // cachedstore.tmpl: cache + encrypted object store
+      // blobstore.tmpl: directstore for []byte data
+      "template": "cachedstore.tmpl",
       "config": {
-      	// Defaults to "applicatino/json". Will be applied on object Put.
+        // Defaults to "application/json". Will be applied on object Put.
         "contentType": "application/json",
         // Defaults to "". Will be applied on object Put.
-        "contentDisposition": "",
-        // Defaults to false. Will be applied on startup.
-        "versioning": false,
-        // Defaults to false. Will be applied on startup.
-        "objectLocking": false,
-        // Defaults to nil. Will be applied on startup.
-        "lifecycle": {
-          "Rules": [
-          	// https://pkg.go.dev/github.com/minio/minio-go/v7/pkg/lifecycle#Rule
-          ]
-        }
+        "contentDisposition": ""
       }
     }
   ]
