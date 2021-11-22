@@ -3,6 +3,8 @@ package common
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -10,6 +12,8 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 )
+
+var ErrBucketDoesNotExist = errors.New("bucket does not exist")
 
 // ObjectStore implements the Lingio CRUD database interface on top of minio's object storage engine.
 type ObjectStore struct {
@@ -50,15 +54,15 @@ func (os ObjectStore) GetObject(file string) ([]byte, ObjectInfo, *Error) {
 		// TODO: add support for VersionID ?
 	})
 	if err != nil {
-		return nil, ObjectInfo{}, minioErrToObjectStoreError(err)
+		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file)
 	}
 	data, err := ioutil.ReadAll(object)
 	if err != nil {
-		return nil, ObjectInfo{}, objectStoreErrorE(http.StatusInternalServerError, os.bucketName, "read object", err).Str("minio.Key", file)
+		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file)
 	}
 	stat, err := object.Stat()
 	if err != nil {
-		return nil, ObjectInfo{}, minioErrToObjectStoreError(err)
+		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file)
 	}
 
 	return data, objectInfoFromMinio(stat), nil
@@ -73,7 +77,7 @@ func (os ObjectStore) PutObject(ctx context.Context, file string, data []byte) (
 		// NOTE: Also add support for ContentEncoding ?
 	})
 	if err != nil {
-		return ObjectInfo{}, minioErrToObjectStoreError(err)
+		return ObjectInfo{}, objectStoreError(err, os.bucketName, file)
 	}
 	return ObjectInfo{
 		ETag:       info.ETag,
@@ -89,7 +93,7 @@ func (os ObjectStore) DeleteObject(ctx context.Context, file string) (diderr *Er
 		// TODO: add support for VersionID ?
 	})
 	if err != nil {
-		return minioErrToObjectStoreError(err)
+		return objectStoreError(err, os.bucketName, file)
 	}
 	return nil
 }
@@ -124,35 +128,42 @@ func (os ObjectStore) auditLog(ctx context.Context, action, object string, err e
 	}
 }
 
-// checkBucket ensures that a bucket exists and is configured as requested.
-func checkBucket(mc *minio.Client, bucketName string) *Error {
+// checkBucket checks if the bucket exists and that the client has some form
+// of access to it. If the bucket does not exist, an error is returned.
+func checkBucket(mc *minio.Client, bucketName string) error {
 	exists, err := mc.BucketExists(context.Background(), bucketName)
 	if err != nil {
-		return minioErrToObjectStoreError(err)
+		return objectStoreError(err, bucketName, "").
+			Msg("error calling s3::BucketExists")
 	}
 	if !exists {
-		return objectStoreError(http.StatusNotFound, bucketName, "check bucket: bucket does not exist")
+		err := fmt.Errorf("%w: %s", ErrBucketDoesNotExist, bucketName)
+		return objectStoreError(err, bucketName, "").
+			Msg("bucket does not exist")
 	}
 	return nil
 }
 
-func minioErrToObjectStoreError(err error) *Error {
-	minioErr := err.(minio.ErrorResponse)
-	return NewErrorE(minioErr.StatusCode, err).
-		Str("minio.Message", minioErr.Message).
-		Str("minio.Code", minioErr.Code).
-		Str("minio.BucketName", minioErr.BucketName).
-		Str("minio.Key", minioErr.Key)
-}
+// objectStoreError returns a http error message, by attempting to cast the
+// provided error as a minio.ErrorResponse, falling back to a 500 status error.
+// It is expected that the caller fills in the Msg field.
+func objectStoreError(err error, bucket, key string) *Error {
+	var lerr *Error
+	if s3err, ok := err.(minio.ErrorResponse); ok {
+		lerr = NewErrorE(s3err.StatusCode, err).
+			Str("minio.Message", s3err.Message).
+			Str("minio.Code", s3err.Code)
+	} else if nerr := errors.Unwrap(err); nerr == ErrBucketDoesNotExist {
+		lerr = NewErrorE(http.StatusNotFound, err)
+	} else {
+		lerr = NewErrorE(http.StatusInternalServerError, err)
+	}
 
-func objectStoreError(code int, bucket, message string) *Error {
-	return NewError(http.StatusNotFound).
-		Str("minio.BucketName", bucket).
-		Str("minio.Message", message)
-}
-
-func objectStoreErrorE(code int, bucket, message string, err error) *Error {
-	return NewErrorE(http.StatusNotFound, err).
-		Str("minio.BucketName", bucket).
-		Str("minio.Message", message)
+	if bucket != "" {
+		lerr.Str("minio.BucketName", bucket)
+	}
+	if key != "" {
+		lerr.Str("minio.Key", key)
+	}
+	return lerr
 }
