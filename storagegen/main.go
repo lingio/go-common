@@ -70,9 +70,6 @@ func main() {
 	dir := path.Dir(os.Args[1])
 
 	defaultObjectStoreConfig := common.ObjectStoreConfig{
-		Versioning:         false,
-		ObjectLocking:      false,
-		Lifecycle:          nil,
 		ContentType:        "application/json",
 		ContentDisposition: "",
 	}
