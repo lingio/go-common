@@ -70,9 +70,6 @@ func main() {
 	dir := path.Dir(os.Args[1])
 
 	defaultObjectStoreConfig := common.ObjectStoreConfig{
-		Versioning:         false,
-		ObjectLocking:      false,
-		Lifecycle:          nil,
 		ContentType:        "application/json",
 		ContentDisposition: "",
 	}
@@ -143,7 +140,7 @@ func main() {
 		})
 
 		// go codeconv uses _ in filenames
-		filename := fmt.Sprintf("%s.gen.go", strings.Replace(b.BucketName, "-", "_", -1))
+		filename := fmt.Sprintf("%s.gen.go", pascalCase2SnakeCase(b.TypeName))
 		filepath := path.Join(dir, filename)
 		err := ioutil.WriteFile(filepath, bytes, 0644)
 		if err != nil {
@@ -180,6 +177,23 @@ func main() {
 	if err != nil {
 		zl.Fatal().Msg("failed to write minio policy to file")
 	}
+}
+
+func pascalCase2SnakeCase(str string) string {
+	var b []rune
+
+	b = append(b, rune(str[0])+('a'-'A'))
+	for _, c := range str[1:] {
+		if c >= 'A' && c <= 'Z' {
+			b = append(b, '_')
+			b = append(b, c+('a'-'A'))
+		} else if c == '-' {
+			b = append(b, '_')
+		} else {
+			b = append(b, c)
+		}
+	}
+	return string(b)
 }
 
 func readSpec(filename string) StorageSpec {
