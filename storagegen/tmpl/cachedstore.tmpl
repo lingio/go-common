@@ -474,22 +474,28 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	{{end -}}
 	{{end}}
 
+
 	{{- /* Remove old indexes if keys changed. */}}
 	// Delete old secondary indexes if they changed
 	if orig != nil {
 		{{range .SecondaryIndexes -}}
 		{{if eq .Type "unique" -}}
+		// {{ .Name }} depends on ({{ .Keys | Materialize "" | Join ", " }})
 		{{if .Optional -}}
-		if {{ .Keys | CheckOptional "obj" | Join " && " }} && {{ .Keys | CheckOptional "orig" | Join " && " }} && {{ .Keys | CompareFields "obj" "orig" " != " | Join " && "}} {
-			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-			err := c.Client.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
-			if err != nil {
-				return common.NewErrorE(http.StatusInternalServerError, err)
+		{
+			oldExists := {{ .Keys | CheckOptional "orig" | Join " && " }}
+			newNil := !({{ .Keys | CheckOptional "obj" | Join " && " }})
+			if (oldExists && newNil) || (oldExists && !newNil && ({{ .Keys | CompareFields "obj" "orig" " != " | Join " || "}})) {
+				idx := CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
+				err := c.Client.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
+				if err != nil {
+					return common.NewErrorE(http.StatusInternalServerError, err)
+				}
 			}
 		}
 		{{- else -}}
-		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " && " }} {
-			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
+		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " || " }} {
+			idx = CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
 			err := c.Client.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
 				return common.NewErrorE(http.StatusInternalServerError, err)
@@ -501,18 +507,23 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		{{- /* */ -}}
 		{{range .SecondaryIndexes -}}
 		{{if eq .Type "set"}}
+		// {{ .Name }} depends on ({{ .Keys | Materialize "" | Join ", " }})
 		{{ if .Optional -}}
-		if {{ .Keys | CheckOptional "obj" | Join " && " }} && {{ .Keys | CheckOptional "orig" | Join " && " }} && {{ .Keys | CompareFields "obj" "orig" " != " | Join " && "}} {
-			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-			c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
-			err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-			if err != nil {
-				return common.NewErrorE(http.StatusInternalServerError, err)
+		{
+			oldExists := {{ .Keys | CheckOptional "orig" | Join " && " }}
+			newNil := !({{ .Keys | CheckOptional "obj" | Join " && " }})
+			if (oldExists && newNil) || (oldExists && !newNil && ({{ .Keys | CompareFields "obj" "orig" " != " | Join " || "}})) {
+				idx = CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
+				c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
+				err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
+				if err != nil {
+					return common.NewErrorE(http.StatusInternalServerError, err)
+				}
 			}
 		}
 		{{- else -}}
-		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " && " }} {
-			idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
+		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " || " }} {
+			idx = CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
 			c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
 			err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
 			if err != nil {
