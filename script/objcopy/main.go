@@ -46,7 +46,7 @@ func main() {
 	dstEnv := flag.String("to", "", "json config file with minio target to write to")
 	bucket := flag.String("bucket", "", "bucket to read from or write to")
 	renameFmt := flag.String("rename", "{KEY}{EXT}", "rename object using key and parsed extension")
-	nobjects := flag.Int("objects-per-min", 100, "rate limit object writes to this per 10s x 5 worker threads")
+	nobjects := flag.Int("objects-rate", 100, "rate limit object writes to this per 10s x 5 worker threads")
 	minioSecret := os.Getenv("MINIO_SECRET")
 	flag.Parse()
 
@@ -165,15 +165,25 @@ func writeIntoStore(store *common.ObjectStore, nobjects int, objects <-chan Obje
 		go func(workerId int) {
 			// #nobjects request every 10 seconds per worker
 			rl := rate.NewLimiter(rate.Every(10*time.Second), nobjects)
-			ctx := context.Background()
 
 			defer close(errchan[workerId])
 			for obj := range objects {
-				rl.Wait(ctx)
+				var r *rate.Reservation
+				for {
+					r = rl.Reserve()
+					if r.OK() {
+						break
+					}
+					fmt.Println("worker", workerId, "got reserve error")
+					time.Sleep(10 * time.Second)
+
+				}
+				time.Sleep(r.Delay())
 				if !obj.Expiration.IsZero() {
 					trap(errors.New("writing objects with expiration time is not yet implemented"))
 				}
 				_, err := store.PutObject(context.TODO(), obj.Key, obj.Data)
+				log.Println(obj.Key)
 				if err != nil {
 					errchan[workerId] <- fmt.Errorf("write: %w", err)
 					return
