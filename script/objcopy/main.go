@@ -176,9 +176,9 @@ func writeIntoStore(store *common.ObjectStore, nobjects int, objects <-chan Obje
 					}
 					fmt.Println("worker", workerId, "got reserve error")
 					time.Sleep(10 * time.Second)
-
 				}
 				time.Sleep(r.Delay())
+
 				if !obj.Expiration.IsZero() {
 					trap(errors.New("writing objects with expiration time is not yet implemented"))
 				}
