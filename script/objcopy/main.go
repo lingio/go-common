@@ -11,6 +11,9 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/lingio/go-common"
 	"github.com/minio/minio-go/v7"
@@ -43,6 +46,7 @@ func main() {
 	dstEnv := flag.String("to", "", "json config file with minio target to write to")
 	bucket := flag.String("bucket", "", "bucket to read from or write to")
 	renameFmt := flag.String("rename", "{KEY}{EXT}", "rename object using key and parsed extension")
+	nobjects := flag.Int("objects-per-min", 100, "rate limit object writes to this per 10s x 5 worker threads")
 	minioSecret := os.Getenv("MINIO_SECRET")
 	flag.Parse()
 
@@ -110,7 +114,7 @@ func main() {
 			}
 		}()
 		// wait on store instead of decoding stdin
-		writeIntoStore(store, objchan)
+		writeIntoStore(store, *nobjects, objchan)
 	}
 }
 
@@ -153,14 +157,19 @@ func readAllFromStore(store *common.ObjectStore) <-chan Object {
 	return objchan
 }
 
-func writeIntoStore(store *common.ObjectStore, objects <-chan Object) {
+func writeIntoStore(store *common.ObjectStore, nobjects int, objects <-chan Object) {
 	const workers = 5
 	errchan := make([]chan error, workers)
 	for i := 0; i < workers; i++ {
 		errchan[i] = make(chan error, 1)
 		go func(workerId int) {
+			// #nobjects request every 10 seconds per worker
+			rl := rate.NewLimiter(rate.Every(10*time.Second), nobjects)
+			ctx := context.Background()
+
 			defer close(errchan[workerId])
 			for obj := range objects {
+				rl.Wait(ctx)
 				if !obj.Expiration.IsZero() {
 					trap(errors.New("writing objects with expiration time is not yet implemented"))
 				}
