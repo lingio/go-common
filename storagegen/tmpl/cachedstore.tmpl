@@ -384,9 +384,12 @@ func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 		ticker.Stop()
 		close(cacheinit)
 
-		if err := c.Client.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil && resulterr == nil {
-			zl.Warn().Str("component", "{{$storeName}}").Msg("could not mark cache as initialized")
-			resulterr = err
+		// Only mark cache as initialized if we didn't encounter any error.
+		if resulterr == nil {
+			if err := c.Client.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil {
+				zl.Warn().Str("component", "{{$storeName}}").Msg("could not mark cache as initialized")
+				resulterr = err
+			}
 		}
 
 		// returning will cancel the ctx, which will also cancel listing and workers
