@@ -50,7 +50,8 @@ func New{{$storeName}}(mc *minio.Client, serviceKey string) (*{{$storeName}}, er
 	return db, nil
 }
 
-// {{$filename}} returns the filename in the object store for this object.
+// {{$filename}} returns the filename used for the only object in this store.
+// {{$filename}}() --> "{{.FilenameFormat}}"
 func {{$filename}}(id string) string {
 	{{ if .FilenameFormat -}}
 	return "{{.FilenameFormat}}"
