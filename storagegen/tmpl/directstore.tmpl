@@ -16,6 +16,7 @@ import (
 {{$modelName := .DbTypeName -}}
 {{$ID := .IdName -}}
 {{$storeName := printf "%sStore" .TypeName -}}
+{{$filename := printf "%sFilename" .TypeName -}}
 
 var {{$storeName}}Config common.ObjectStoreConfig
 func init() {
@@ -51,8 +52,8 @@ func New{{$storeName}}(mc *minio.Client, serviceKey string) (*{{$storeName}}, er
 	return db, nil
 }
 
-// filename map typed values to a string
-func (s *{{$storeName}}) filename(id string) string {
+// {{$filename}} returns the filename in the object store for this object.
+func {{$filename}}(id string) string {
 	{{ if .FilenameFormat -}}
 	return fmt.Sprintf("{{.FilenameFormat}}", id)
 	{{- else -}}
@@ -89,7 +90,7 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 
 // Get attempts to load an object with the specified ID from the store.
 func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
-	data, info, lerr := s.backend.GetObject(s.filename(id))
+	data, info, lerr := s.backend.GetObject({{$filename}}(id))
 	if lerr != nil {
 		return nil, "", lerr
 	}
@@ -113,7 +114,7 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
 	}
-	_, lerr := s.backend.PutObject(ctx, s.filename(obj.{{.IdName}}), data)
+	_, lerr := s.backend.PutObject(ctx, {{$filename}}(obj.{{.IdName}}), data)
 	if lerr != nil {
 		return lerr.Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
 	}
@@ -122,7 +123,7 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 
 // Delete
 func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
-	if err := s.backend.DeleteObject(ctx, s.filename(id)); err != nil {
+	if err := s.backend.DeleteObject(ctx, {{$filename}}(id)); err != nil {
 		return err.Str("ID", id).Msg("failed to delete object in minio")
 	}
 	return nil
