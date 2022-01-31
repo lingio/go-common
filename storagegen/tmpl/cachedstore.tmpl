@@ -649,7 +649,10 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 	// Delete ID-cache
 	var err error
 	keys := []string{c.Key({{$cacheKey}}ID, {{$ID | ToLower}})}
+
 	{{range .SecondaryIndexes -}}
+	{{if eq .Type "unique"}}
+	// Delete from unique secondary index: {{.Name}}
 	{{if .Optional}}
 	if {{ .Keys | CheckOptional "o" | Join " && " }} {
 		idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
@@ -659,14 +662,17 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 	idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
 	keys = append(keys, c.Key({{$cacheKey}}{{.Name}}, idx))
 	{{end -}}
+	{{end -}}
 	{{end}}
 
+	// Delete all keys at the same time
 	err = c.Client.Del(context.TODO(), keys...).Err()
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
 	{{if .GetAll -}}
+	// Remove from all set
 	c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All), {{$ID | ToLower}})
 	err = c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Err()
 	if err != nil {
@@ -676,6 +682,7 @@ func (c *{{$cacheName}}) Delete({{$ID | ToLower}} string) *common.Error {
 
 	{{range .SecondaryIndexes -}}
 	{{if eq .Type "set"}}
+	// Remove from 'set' secondary index: {{.Name}}
 	{{ if .Optional -}}
 	if {{ .Keys | CheckOptional "o" | Join " && " }} {
 		idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
