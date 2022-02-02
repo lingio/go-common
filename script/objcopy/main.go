@@ -180,6 +180,7 @@ func writeIntoStore(store *common.ObjectStore, objectsPerSecond int, objects <-c
 					if err != nil && err.HttpStatusCode != http.StatusInternalServerError {
 						log.Println("got 500, will retry in 5s")
 						time.Sleep(5 * time.Second)
+						continue
 					} else if err != nil {
 						errchan[workerId] <- fmt.Errorf("write: %w", err)
 						return
