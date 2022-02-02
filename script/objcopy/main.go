@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -46,7 +47,7 @@ func main() {
 	dstEnv := flag.String("to", "", "json config file with minio target to write to")
 	bucket := flag.String("bucket", "", "bucket to read from or write to")
 	renameFmt := flag.String("rename", "{KEY}{EXT}", "rename object using key and parsed extension")
-	nobjects := flag.Int("objects-per-min", 100, "rate limit object writes to this per 10s x 5 worker threads")
+	nobjsPerSec := flag.Int("obj-per-sec", 100, "rate limit object writes per second")
 	minioSecret := os.Getenv("MINIO_SECRET")
 	flag.Parse()
 
@@ -114,7 +115,7 @@ func main() {
 			}
 		}()
 		// wait on store instead of decoding stdin
-		writeIntoStore(store, *nobjects, objchan)
+		writeIntoStore(store, *nobjsPerSec, objchan)
 	}
 }
 
@@ -157,26 +158,34 @@ func readAllFromStore(store *common.ObjectStore) <-chan Object {
 	return objchan
 }
 
-func writeIntoStore(store *common.ObjectStore, nobjects int, objects <-chan Object) {
+func writeIntoStore(store *common.ObjectStore, objectsPerSecond int, objects <-chan Object) {
 	const workers = 5
 	errchan := make([]chan error, workers)
 	for i := 0; i < workers; i++ {
 		errchan[i] = make(chan error, 1)
 		go func(workerId int) {
-			// #nobjects request every 10 seconds per worker
-			rl := rate.NewLimiter(rate.Every(10*time.Second), nobjects)
-			ctx := context.Background()
+			rl := rate.NewLimiter(rate.Every(time.Second/time.Duration(objectsPerSecond/workers)), objectsPerSecond/workers)
 
 			defer close(errchan[workerId])
 			for obj := range objects {
-				rl.Wait(ctx)
-				if !obj.Expiration.IsZero() {
-					trap(errors.New("writing objects with expiration time is not yet implemented"))
-				}
-				_, err := store.PutObject(context.TODO(), obj.Key, obj.Data)
-				if err != nil {
-					errchan[workerId] <- fmt.Errorf("write: %w", err)
-					return
+				for {
+					if err := rl.Wait(context.Background()); err != nil {
+						log.Fatalln("rate limit:", err)
+					}
+
+					if !obj.Expiration.IsZero() {
+						trap(errors.New("writing objects with expiration time is not yet implemented"))
+					}
+					_, err := store.PutObject(context.TODO(), obj.Key, obj.Data)
+					if err != nil && err.HttpStatusCode != http.StatusInternalServerError {
+						log.Println("got 500, will retry in 5s")
+						time.Sleep(5 * time.Second)
+					} else if err != nil {
+						errchan[workerId] <- fmt.Errorf("write: %w", err)
+						return
+					}
+
+					break
 				}
 			}
 		}(i)
