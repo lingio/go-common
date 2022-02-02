@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -53,6 +54,7 @@ func main() {
 
 	// Stdout is safe for potential consumers.
 	log.Default().SetOutput(os.Stderr)
+	log.Default().SetPrefix("[objcopy] ")
 
 	if minioSecret == "" {
 		trap(errors.New("missing MINIO_SECRET environment variable"))
@@ -67,7 +69,7 @@ func main() {
 	} else if len(*dstEnv) > 0 {
 		env = *dstEnv
 	} else {
-		panic("both --from and --to are empty")
+		trap(errors.New("both --from and --to are empty"))
 	}
 
 	configData, err := os.ReadFile(env)
@@ -84,18 +86,22 @@ func main() {
 	if bucketExists, err := minioClient.BucketExists(context.TODO(), *bucket); err != nil {
 		trap(err)
 	} else if !bucketExists {
-		panic("bucket does not exist")
+		trap(fmt.Errorf("bucket '%s': does not exist", *bucket))
 	}
 
 	store, err := common.NewObjectStore(minioClient, *bucket, common.ObjectStoreConfig{})
 	trap(err)
 
 	if len(*srcEnv) > 0 {
+		log.Println("reading ...")
 		// Read from store and write json-encoding to stdout
+		var n int
 		encoder := json.NewEncoder(os.Stdout)
 		for obj := range readAllFromStore(store) {
 			encoder.Encode(obj)
+			n++
 		}
+		log.Println("done:", n, "objects read")
 	} else {
 		// Read json-encoded data from stdin and write to store
 		decoder := json.NewDecoder(os.Stdin)
@@ -114,8 +120,10 @@ func main() {
 				objchan <- obj
 			}
 		}()
+		log.Println("writing")
 		// wait on store instead of decoding stdin
-		writeIntoStore(store, *nobjsPerSec, objchan)
+		n := writeIntoStore(store, *nobjsPerSec, objchan)
+		log.Println("done:", n, "objects written")
 	}
 }
 
@@ -158,15 +166,18 @@ func readAllFromStore(store *common.ObjectStore) <-chan Object {
 	return objchan
 }
 
-func writeIntoStore(store *common.ObjectStore, objectsPerSecond int, objects <-chan Object) {
+func writeIntoStore(store *common.ObjectStore, objectsPerSecond int, objects <-chan Object) uint64 {
+	var n uint64
+
 	const workers = 5
 	errchan := make([]chan error, workers)
 	for i := 0; i < workers; i++ {
 		errchan[i] = make(chan error, 1)
 		go func(workerId int) {
 			rl := rate.NewLimiter(rate.Every(time.Second/time.Duration(objectsPerSecond/workers)), objectsPerSecond/workers)
-
+			var wn uint64
 			defer close(errchan[workerId])
+			defer func() { atomic.AddUint64(&n, wn) }()
 			for obj := range objects {
 				for {
 					if err := rl.Wait(context.Background()); err != nil {
@@ -188,6 +199,7 @@ func writeIntoStore(store *common.ObjectStore, objectsPerSecond int, objects <-c
 
 					break
 				}
+				wn++
 			}
 		}(i)
 	}
@@ -199,6 +211,7 @@ func writeIntoStore(store *common.ObjectStore, objectsPerSecond int, objects <-c
 		}
 	}
 	trap(firsterr)
+	return n
 }
 
 func trap(err error) {
