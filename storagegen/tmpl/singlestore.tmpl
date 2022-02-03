@@ -14,6 +14,7 @@ import (
 
 {{$modelName := .DbTypeName -}}
 {{$storeName := printf "%sStore" .TypeName -}}
+{{$filename := printf "%sFilename" .TypeName -}}
 
 var {{$storeName}}Config common.ObjectStoreConfig
 func init() {
@@ -49,8 +50,9 @@ func New{{$storeName}}(mc *minio.Client, serviceKey string) (*{{$storeName}}, er
 	return db, nil
 }
 
-// filename returns the name of the one file in this store
-func (s *{{$storeName}}) filename() string {
+// {{$filename}} returns the filename used for the only object in this store.
+// {{$filename}}() --> "{{.FilenameFormat}}"
+func {{$filename}}(id string) string {
 	{{ if .FilenameFormat -}}
 	return "{{.FilenameFormat}}"
 	{{- else -}}
@@ -83,7 +85,7 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 
 // Get attempts to load the singleton from the store.
 func (s *{{$storeName}}) Get() (*models.{{.DbTypeName}}, string, *common.Error) {
-	data, info, lerr := s.backend.GetObject(s.filename())
+	data, info, lerr := s.backend.GetObject({{$filename}}.filename())
 	if lerr != nil {
 		return nil, "", lerr.Msg("failed to get from minio")
 	}
@@ -107,7 +109,7 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Msg("failed to marshal json")
 	}
-	if _, lerr := s.backend.PutObject(ctx, s.filename(), data); lerr != nil {
+	if _, lerr := s.backend.PutObject(ctx, {{$filename}}.filename(), data); lerr != nil {
 		return lerr.Msg("failed to write to minio")
 	}
 	return nil
@@ -115,7 +117,7 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 
 // Delete
 func (s *{{$storeName}}) Delete(ctx context.Context) *common.Error {
-	if err := s.backend.DeleteObject(ctx, s.filename()); err != nil {
+	if err := s.backend.DeleteObject(ctx, {{$filename}}.filename()); err != nil {
 		return err.Msg("failed to delete object in minio")
 	}
 	return nil

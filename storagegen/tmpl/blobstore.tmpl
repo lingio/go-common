@@ -14,6 +14,7 @@ import (
 )
 
 {{$storeName := printf "%sStore" .TypeName -}}
+{{$filename := printf "%sFilename" .TypeName -}}
 
 var {{$storeName}}Config common.ObjectStoreConfig
 
@@ -50,8 +51,9 @@ func New{{$storeName}}(mc *minio.Client, serviceKey string) (*{{$storeName}}, er
 	return db, nil
 }
 
-// filename map typed values to a string
-func (s *{{$storeName}}) filename(id string) string {
+// {{$filename}} returns the object store filename used for the object identified by the provided id
+// {{$filename}}("id") --> "{{if .FilenameFormat}}{{printf .FilenameFormat "id"}}{{- else -}}id.json{{end}}"
+func {{$filename}}(id string) string {
 	{{ if .FilenameFormat -}}
 	return fmt.Sprintf("{{.FilenameFormat}}", id)
 	{{- else -}}
@@ -75,7 +77,7 @@ func (s *{{$storeName}}) Create(ctx context.Context, blob models.{{.DbTypeName}}
 
 // Get attempts to load an byte blob with the specified ID from the store.
 func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
-	data, info, err := s.backend.GetObject(s.filename(id))
+	data, info, err := s.backend.GetObject({{$filename}}(id))
 	if err != nil {
 		return nil, "", err
 	}
@@ -89,7 +91,7 @@ func (s *{{$storeName}}) Put(ctx context.Context, id string, blob models.{{.DbTy
 
 // put does the heavy lifting for both Put and Create methods.
 func (s *{{$storeName}}) put(ctx context.Context, id string, blob models.{{.DbTypeName}}) *common.Error {
-	if _, err := s.backend.PutObject(ctx, s.filename(id), blob); err != nil {
+	if _, err := s.backend.PutObject(ctx, {{$filename}}(id), blob); err != nil {
 		return err.Str("ID", id).Msg("failed to write to minio")
 	}
 	return nil
@@ -97,7 +99,7 @@ func (s *{{$storeName}}) put(ctx context.Context, id string, blob models.{{.DbTy
 
 // Delete
 func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
-	if err := s.backend.DeleteObject(ctx, s.filename(id)); err != nil {
+	if err := s.backend.DeleteObject(ctx, {{$filename}}(id)); err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", id).Msg("failed to delete object in minio")
 	}
