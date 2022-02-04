@@ -156,27 +156,6 @@ func main() {
 	if err != nil {
 		zl.Fatal().Str("err", err.Error()).Msg("failed to load common template")
 	}
-
-	mp := &MinioPolicy{
-		Version:   "2012-10-17",
-		Statement: make([]Statement, 1),
-	}
-	mp.Statement[0].Effect = "Allow"
-	mp.Statement[0].Action = []string{"s3:GetObject", "s3:PutObject", "s3:ListBucket"}
-	mp.Statement[0].Resource = make([]string, 0)
-
-	for _, b := range spec.Buckets {
-		mp.Statement[0].Resource = append(mp.Statement[0].Resource, fmt.Sprintf("arn:aws:s3:::%s", b.BucketName))
-		mp.Statement[0].Resource = append(mp.Statement[0].Resource, fmt.Sprintf("arn:aws:s3:::%s/*", b.BucketName))
-	}
-	bytes2, err := json.MarshalIndent(mp, "", "  ")
-	if err != nil {
-		zl.Fatal().Msg("failed marshalling to json")
-	}
-	err = ioutil.WriteFile(fmt.Sprintf("%s/minio_policy.json", dir), bytes2, 0644)
-	if err != nil {
-		zl.Fatal().Msg("failed to write minio policy to file")
-	}
 }
 
 func pascalCase2SnakeCase(str string) string {
