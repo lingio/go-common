@@ -60,6 +60,11 @@ func {{$filename}}(id string) string {
 	{{- end }}
 }
 
+// Backend returns the underlying lingio store.
+func (s *{{$storeName}}) Backend() common.LingioStore {
+	return s.backend
+}
+
 //=============================================================================
 // Store implementation
 //=============================================================================
