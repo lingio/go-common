@@ -14,6 +14,5 @@ require (
 	github.com/labstack/echo/v4 v4.2.1
 	github.com/minio/minio-go/v7 v7.0.15
 	github.com/rs/zerolog v1.15.0
-	github.com/ziflex/lecho/v2 v2.0.0
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
 )
