@@ -112,6 +112,10 @@ func (os ObjectStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
 	return objects
 }
 
+func (os ObjectStore) StoreName() string {
+	return os.bucketName
+}
+
 func (os ObjectStore) auditLog(ctx context.Context, action, object string, err error) {
 	ctx = WithBucket(ctx, os.bucketName)
 	ctx = WithAction(ctx, action)

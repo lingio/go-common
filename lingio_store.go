@@ -21,6 +21,7 @@ type LingioStore interface {
 	PutObject(ctx context.Context, file string, data []byte) (ObjectInfo, *Error)
 	DeleteObject(ctx context.Context, file string) *Error
 	ListObjects(context.Context) <-chan ObjectInfo
+	StoreName() string
 }
 
 // ObjectInfo

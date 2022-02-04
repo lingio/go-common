@@ -98,3 +98,6 @@ func (ds dummyStore) DeleteObject(ctx context.Context, file string) *common.Erro
 func (ds dummyStore) ListObjects(ctx context.Context) <-chan common.ObjectInfo {
 	return nil
 }
+func (ds dummyStore) StoreName() string {
+	return "dummy store"
+}
