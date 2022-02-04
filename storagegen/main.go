@@ -146,7 +146,7 @@ func main() {
 		if err != nil {
 			zl.Fatal().Str("err", err.Error()).Msg("failed to load minio template")
 		}
-		if err := formatFile(filepath); err != nil {
+		if err := postprocess(filepath); err != nil {
 			zl.Warn().Str("err", err.Error()).Str("file", filename).Msg("failed to format file")
 		}
 	}
@@ -336,7 +336,9 @@ func joinString(b string, a []string) string {
 	return strings.Join(a, b)
 }
 
-func formatFile(filepath string) error {
+func postprocess(filepath string) error {
+	var gofmt bool
+	var imports bool
 	// If go is installed the standard way from https://golang.org/doc/install
 	// then we will detect at least Linux and MacOS. Special case for Ubuntu snap.
 	for _, gobin := range []string{"go", "/snap/bin/go", "/usr/local/go/bin/go"} {
@@ -346,8 +348,32 @@ func formatFile(filepath string) error {
 		}
 
 		cmd := exec.Command(exe, "fmt", filepath)
-		return cmd.Run()
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("format '%s': %w", filepath, err)
+		}
+		gofmt = true
+		break
 	}
-	zl.Warn().Str("file", filepath).Msg("skipping go fmt")
+
+	for _, goimp := range []string{"goimports", "/snap/bin/goimports", "/usr/local/go/bin/goimports"} {
+		exe, err := exec.LookPath(goimp)
+		if err != nil {
+			continue
+		}
+
+		cmd := exec.Command(exe, "-w", "-srcdir", filepath, filepath)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("goimport '%s': %w", filepath, err)
+		}
+		imports = true
+		break
+	}
+
+	if !gofmt {
+		zl.Warn().Str("file", filepath).Msg("skipping go fmt")
+	}
+	if !imports {
+		zl.Warn().Str("file", filepath).Msg("skipping goimports")
+	}
 	return nil
 }
