@@ -204,10 +204,6 @@ type TmplParams struct {
 	GetAll           bool
 }
 
-type TmplParams2 struct {
-	Buckets []BucketSpec
-}
-
 func generate(tmplFilename string, params interface{}) []byte {
 	funcMap := template.FuncMap{
 		"ToUpper":       strings.ToUpper,
