@@ -239,10 +239,9 @@ func loadModelsFromDir(dirname string, fileFilter func(fs.FileInfo) bool) {
 		log.Fatalf("Can not parse dir: %s: %v\n", dirname, err)
 	}
 
-	for pkgname, astpkg := range pkgs {
-		log.Println("scanning pkg", pkgname)
-		for _, astfile := range astpkg.Files {
-			log.Println("scanning file", astfile.Name)
+	for _, astpkg := range pkgs {
+		for filename, astfile := range astpkg.Files {
+			log.Println("loading", filename)
 			for _, decl := range astfile.Decls {
 				switch ds := decl.(type) {
 				case *ast.GenDecl:
