@@ -13,16 +13,18 @@ import (
 )
 
 type StoreListing struct {
-	Stores []string
+	Stores []string `json:"stores"`
 }
 
 type StoreObjectsListing struct {
-	Objects []string
+	Objects []string `json:"objects"`
 }
 
+// StoreObject is a json blob composed directly by the getStoreObject method.
+// See getStoreObject for more details.
 type StoreObject struct {
-	Info   ObjectInfo
-	Object []byte
+	Info   ObjectInfo `json:"info"`
+	Object []byte     `json:"object"`
 }
 
 // BucketBrowser s
@@ -112,9 +114,9 @@ func (bb *BucketBrowser) getStoreObject(c echo.Context) error {
 
 			var response bytes.Buffer
 
-			response.WriteString("{\"Object\":")
+			response.WriteString("{\"object\":")
 			response.Write(data)
-			response.WriteString(",\"Info\":")
+			response.WriteString(",\"info\":")
 			response.Write(infodata)
 			response.WriteString("}")
 
