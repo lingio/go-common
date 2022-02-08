@@ -15,6 +15,13 @@ import (
 	zl "github.com/rs/zerolog/log"
 )
 
+type Cmd int
+
+const (
+	CmdGenerateStorage = iota
+	CmdGenerateBucketBrowser
+)
+
 type BucketSpec struct {
 	TypeName         string
 	SecondaryIndexes []SecondaryIndex
@@ -64,11 +71,31 @@ func main() {
 	//fileName   := "user_started_classes.gen.go"
 
 	if len(os.Args) < 2 {
-		zl.Fatal().Msg("Usage: go run main.go <spec.json>")
+		zl.Fatal().Msg("Usage: go run main.go [bucketbrowser] <spec.json>")
 	}
-	spec := readSpec(os.Args[1])
-	dir := path.Dir(os.Args[1])
 
+	cmd := CmdGenerateStorage
+
+	i := 1
+	if os.Args[i] == "bucketbrowser" {
+		cmd = CmdGenerateBucketBrowser
+		i++
+	}
+
+	spec := readSpec(os.Args[i])
+	dir := path.Dir(os.Args[i])
+
+	switch cmd {
+	case CmdGenerateStorage:
+		generateStorage(dir, spec)
+	case CmdGenerateBucketBrowser:
+		generateBucketBrowserSwagger(path.Dir(dir), spec)
+	default:
+		zl.Fatal().Int("command", cmd).Msg("unknown command")
+	}
+}
+
+func generateStorage(dir string, spec StorageSpec) {
 	defaultObjectStoreConfig := common.ObjectStoreConfig{
 		ContentType:        "application/json",
 		ContentDisposition: "",
@@ -217,13 +244,9 @@ func generate(tmplFilename string, params interface{}) []byte {
 		"Materialize":   materialize,
 		"CheckOptional": checkOptionalField,
 	}
-	tpltxt, err := os.ReadFile(tmplFilename)
-	if err != nil {
-		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to read template")
-	}
 
-	// tpl, err := template.ParseFiles(tmplFilename)
-	tpl, err := template.New(path.Base(tmplFilename)).Funcs(funcMap).Parse(string(tpltxt))
+	main := path.Base(tmplFilename)
+	tpl, err := template.New(main).Funcs(funcMap).ParseFiles(tmplFilename, "tmpl/lingio_store.tmpl")
 	if err != nil {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to load template")
 	} else if tpl == nil {
