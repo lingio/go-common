@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"go/ast"
 	goparser "go/parser"
 	"go/token"
@@ -253,8 +252,14 @@ func loadModelsFromDir(dirname string, fileFilter func(fs.FileInfo) bool) {
 							case *ast.TypeSpec:
 								switch typespec := spec.Type.(type) {
 								case *ast.StructType:
+									if _, ok := structDefs[spec.Name.Name]; ok {
+										log.Fatalf("struct def %s already exists", spec.Name.Name)
+									}
 									structDefs[spec.Name.Name] = typespec
 								case *ast.Ident:
+									if _, ok := typeAliases[spec.Name.Name]; ok {
+										log.Fatalf("alias %s already exists", spec.Name.Name)
+									}
 									typeAliases[spec.Name.Name] = typespec.Name
 								case *ast.ArrayType:
 									switch eltspec := typespec.Elt.(type) {
@@ -262,15 +267,14 @@ func loadModelsFromDir(dirname string, fileFilter func(fs.FileInfo) bool) {
 										// make []byte a special case for simplicity's sake
 										if eltspec.Name == "byte" {
 											typeAliases[spec.Name.Name] = "[]byte"
-											fmt.Println(spec.Name.Name)
 										} else {
-											fmt.Printf("cannot handle array %s element type: %T\n", spec.Name.Name, typespec)
+											log.Printf("[warn] cannot handle array %s element type: %T\n", spec.Name.Name, typespec)
 										}
 									default:
-										fmt.Printf("unknown array %s element type: %T\n", spec.Name.Name, typespec)
+										log.Printf("[warn] unknown array %s element type: %T\n", spec.Name.Name, typespec)
 									}
 								default:
-									fmt.Printf("unknown spec type for %s: %T\n", spec.Name.Name, typespec)
+									log.Printf("[warn] unknown spec type for %s: %T\n", spec.Name.Name, typespec)
 
 								}
 							}
