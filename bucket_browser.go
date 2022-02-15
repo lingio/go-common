@@ -163,7 +163,7 @@ func (bb *BucketBrowser) getStoreObject(c echo.Context) error {
 
 	if out[0].Kind() == reflect.Array ||
 		out[0].Kind() == reflect.Slice {
-		c.JSON(http.StatusOK, ObjectResponse{
+		return c.JSON(http.StatusOK, ObjectResponse{
 			Objects: (*json.RawMessage)(&data),
 		})
 	}
