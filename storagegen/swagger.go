@@ -10,16 +10,25 @@ import (
 	"path"
 	"strings"
 	"text/template"
+
+	"github.com/lingio/go-common"
 )
 
 type bucketParams struct {
-	Objects []bucketObjects
-	Service string
+	Objects   []bucketObject
+	Service   string
+	Endpoints []indexedEndpoint
 }
 
-type bucketObjects struct {
-	Name   string
-	Schema typeDef
+type indexedEndpoint struct {
+	ComponentRef  string
+	PathParamName string
+}
+
+type bucketObject struct {
+	Name            string
+	Schema          typeDef
+	HasArrayVariant bool
 }
 
 type typeDef struct {
@@ -42,21 +51,18 @@ var timeSchema = typeDef{
 	Format: "datetime",
 }
 
-	var typeNames []string
-	for _, b := range spec.Buckets {
-		typeNames = append(typeNames, b.DbTypeName)
-	}
 func generateBucketBrowserSwagger(projdir string, spec common.ServiceStorageSpec) {
 
 	loadModelsFromDir(path.Join(projdir, "storage"), ModelFileFilter)
 	loadModelsFromDir(path.Join(projdir, "models"), nil)
 
 	tmplData := bucketParams{
-		Objects: []bucketObjects{},
+		Objects: []bucketObject{},
 		Service: spec.ServiceName,
 	}
 
-	for _, dbTypeName := range typeNames {
+	for _, b := range spec.Buckets {
+		dbTypeName := b.DbTypeName
 		var typdef typeDef
 
 		if def, ok := structDefs[dbTypeName]; ok {
@@ -70,17 +76,30 @@ func generateBucketBrowserSwagger(projdir string, spec common.ServiceStorageSpec
 			log.Fatalln("Cannot find definition for model:", dbTypeName)
 		}
 
-		tmplData.Objects = append(tmplData.Objects, bucketObjects{
-			Name:   dbTypeName,
-			Schema: typdef,
+		var hasArrayVariant bool
+		if b.GetAll != nil {
+			hasArrayVariant = *b.GetAll
+		}
+		for _, si := range b.SecondaryIndexes {
+			if si.Type == common.INDEX_TYPE_SET {
+				hasArrayVariant = true
+				break
+			}
+		}
+
+		tmplData.Objects = append(tmplData.Objects, bucketObject{
+			Name:            dbTypeName,
+			Schema:          typdef,
+			HasArrayVariant: hasArrayVariant,
 		})
+
 	}
 
 	tpl := template.Must(template.ParseFiles("./tmpl/bucket_browser.tmpl"))
 	if err := tpl.Execute(os.Stdout, tmplData); err != nil {
 		log.Fatalln(err)
 	}
-	l := log.New(os.Stdout, "        ", 0)
+	l := log.New(os.Stdout, "      ", 0)
 	for _, obj := range tmplData.Objects {
 		l.Printf("%s:\n", obj.Name)
 		l.SetPrefix(l.Prefix() + "  ")
@@ -106,7 +125,12 @@ func outputObject(l *log.Logger, def typeDef) {
 		}
 		l.SetPrefix(l.Prefix()[2:])
 
-		l.Printf("required:\n")
+		for _, prop := range def.Properties {
+			if prop.Required {
+				l.Printf("required:\n")
+				break
+			}
+		}
 		l.SetPrefix(l.Prefix() + "  ")
 		for _, prop := range def.Properties {
 			if prop.Required {

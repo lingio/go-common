@@ -6,143 +6,152 @@ servers:
     - url: "http://localhost:4711"
 paths:
     /ops/stores:
-        get:
-            summary: "List all stores."
-            operationId: "ListStores"
-            security:
-              - bearerAuth: ["admin"]
-            responses:
-                200:
-                    $ref: "#/components/responses/StoreListing"
-                default:
-                    $ref: '#/components/responses/Error'
-    /ops/stores/{store}/objects:
-        get:
-            summary: "List object keys in a specific store."
-            operationId: "ListObjects"
-            parameters:
-                - in: "path"
-                  name: "store"
-                  required: true
-                  schema:
-                    type: "string"
-                - in: "query"
-                  name: "q"
-                  required: false
-                  description: "Only include object keys containing this substring."
-                  schema:
-                    type: string
-            responses:
-                200:
-                    $ref: "#/components/responses/ObjectListing"
-                default:
-                  $ref: '#/components/responses/Error'
-    /ops/stores/{store}/objects/{objectId}:
-        get:
-            summary: "Get an object from a specific store by its key."
-            operationId: "GetObject"
-            parameters:
-                - in: "path"
-                  name: "store"
-                  required: true
-                  schema:
-                    type: "string"
-                - in: "path"
-                  name: "objectId"
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                200:
-                    $ref: "#/components/responses/Object"
-                default:
-                  $ref: '#/components/responses/Error'
+      get:
+        summary: "List all stores."
+        operationId: "ListStores"
+        security:
+          - bearerAuth: ["admin"]
+        responses:
+          200:
+            $ref: "#/components/responses/StoreListing"
+          default:
+            $ref: '#/components/responses/Error'
+
+    /ops/stores/{store}/methods:
+      get:
+        summary: "List all object request methods available for a specific store."
+        operationId: "ListStoreMethods"
+        security:
+          - bearerAuth: ["admin"]
+        parameters:
+          - in: "path"
+            name: "store"
+            required: true
+            schema:
+              type: "string"
+        responses:
+          200:
+            $ref: "#/components/responses/MethodListing"
+          default:
+            $ref: '#/components/responses/Error'
+
+    /ops/stores/{store}/object-requests:
+      post:
+        summary: "Request one or more objects by a method name and value."
+        operationId: "GetObject"
+        security:
+          - bearerAuth: ["admin"]
+        parameters:
+          - in: "path"
+            name: "store"
+            required: true
+            schema:
+              type: "string"
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectRequest"
+        responses:
+          200:
+            $ref: "#/components/responses/ObjectResponse"
+          default:
+            $ref: '#/components/responses/Error'
 
 components:
-    responses:
-        StoreListing:
-            description: "The shortcut version of the data"
-            content:
-                application/json:
-                    schema:
-                        $ref: "#/components/schemas/StoreListing"
-        ObjectListing:
-            description: "The content that the Shortcut is describing"
-            content:
-                application/json:
-                    schema:
-                        $ref: "#/components/schemas/ObjectListing"
-        Object:
-            description: "The content that the Shortcut is describing"
-            content:
-                application/json:
-                    schema:
-                      $ref: '#/components/schemas/Object'
-
-        Error:
-            description: "Error"
-            content:
-                application/json:
-                    schema:
-                        $ref: "#/components/schemas/Error"
     securitySchemes:
-        bearerAuth:
-            type: http
-            scheme: bearer
+      bearerAuth:
+        type: http
+        scheme: bearer
+
+    responses:
+      StoreListing:
+        description: "A list of all exposed stores."
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreListing"
+
+      MethodListing:
+        description: "The list of object-request methods a store provides."
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MethodListing"
+
+      ObjectResponse:
+        description: "The requested object or objects."
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryResult'
+
+      Error:
+        description: "Error"
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Error"
 
     schemas:
-        Error:
-          type: "object"
-          properties:
-            message:
-              type: "string"
-              example: "No topic with id=bus-t4211 found"
+      Error:
+        type: "object"
+        properties:
+          message:
+            type: "string"
+            example: "Object not found"
 
-        StoreListing:
-          type: "object"
-          properties:
-              stores:
-                  type: array
-                  items:
-                      type: string
-          required:
-              - stores
+      ObjectRequest:
+        type: "object"
+        properties:
+          method:
+            type: string
+            example: "Get"
+          field:
+            type: string
+            example: "1234567890"
+        required:
+          - method
+          - field
 
-        ObjectListing:
-          type: "object"
-          properties:
+      StoreListing:
+        type: "object"
+        properties:
+          stores:
+            type: array
+            items:
+              type: string
+        required:
+            - stores
+
+      MethodListing:
+        type: "object"
+        properties:
+          methods:
+            type: array
+            items:
+              type: string
+        required:
+            - methods
+
+      QueryResult:
+        oneOf:
+          - type: object
+            properties:
+              object:
+                oneOf:
+                  {{ range .Objects -}}
+                    - $ref: '#/components/schemas/{{.Name}}'
+                  {{ end }}
+          - type: object
+            properties:
               objects:
-                  type: array
-                  items:
-                      type: string
-          required:
-              - objects
-
-        ObjectInfo:
-          type: "object"
-          properties:
-            key:
-              type: string
-            expiration:
-              type: string
-              format: datetime
-            etag:
-              type: string
-          required:
-            - key
-            - expiration
-            - etag
-
-        Object:
-          allOf:
-            - type: object
-              properties:
-                info:
-                  $ref: '#/components/schemas/ObjectInfo'
-            - type: object
-              properties:
-                object:
+                type: array
+                items:
                   oneOf:
-                    {{ range .Objects -}}
-                      - $ref: '#/components/schemas/{{.Name}}'
-                    {{ end }}
+                    {{- range .Objects -}}
+                    {{ if .HasArrayVariant }}
+                    - $ref: '#/components/schemas/{{.Name}}'
+                    {{- end -}}
+                    {{- end }}
+

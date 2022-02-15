@@ -1,13 +1,12 @@
 package common
 
 import (
-	"bytes"
-	"context"
 	"crypto/rsa"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
-	"strings"
-	"time"
+	"reflect"
 
 	"github.com/labstack/echo/v4"
 )
@@ -16,120 +15,167 @@ type StoreListing struct {
 	Stores []string `json:"stores"`
 }
 
-type StoreObjectsListing struct {
-	Objects []string `json:"objects"`
+type MethodListing struct {
+	Methods []string `json:"methods"`
 }
 
-// StoreObject is a json blob composed directly by the getStoreObject method.
-// See getStoreObject for more details.
-type StoreObject struct {
-	Info   ObjectInfo `json:"info"`
-	Object []byte     `json:"object"`
+type ObjectResponse struct {
+	Object  *json.RawMessage `json:"object,omitempty"`
+	Objects *json.RawMessage `json:"objects,omitempty"`
+}
+
+type BucketBrowserObjectRequest struct {
+	Method string `json:"method"`
+	Field  string `json:"field"`
 }
 
 // BucketBrowser s
 type BucketBrowser struct {
-	jwtAuthKey *rsa.PublicKey
-	backends   []LingioStore
+	jwtAuthKey     *rsa.PublicKey
+	stores         []string
+	allowedMethods map[string]reflect.Value
+	storageSpec    ServiceStorageSpec
 }
 
-func NewBucketBrowser(stores ...LingioStore) *BucketBrowser {
-	return &BucketBrowser{
-		jwtAuthKey: nil,
-		backends:   stores,
+func NewBucketBrowser(spec ServiceStorageSpec, jwtKey *rsa.PublicKey, stores ...interface{}) *BucketBrowser {
+	bb := &BucketBrowser{
+		jwtAuthKey:     jwtKey,
+		storageSpec:    spec,
+		stores:         make([]string, 0, len(stores)),
+		allowedMethods: make(map[string]reflect.Value),
 	}
+
+	bb.expose(stores)
+
+	return bb
 }
 
-func (bb *BucketBrowser) WithPublicKey(jwtKey *rsa.PublicKey) *BucketBrowser {
-	bb.jwtAuthKey = jwtKey
-	return bb
+func (bb *BucketBrowser) expose(stores []interface{}) {
+	for _, store := range stores {
+		t := reflect.ValueOf(store)
+		m := t.MethodByName("Backend")
+		if !m.IsValid() || m.IsZero() {
+			log.Fatalf("cannot reflect Backend method on %T\n", store)
+		}
+
+		var storeName string
+		out := m.Call([]reflect.Value{})
+		if ls, ok := out[0].Interface().(LingioStore); ok {
+			storeName = ls.StoreName()
+		} else {
+			log.Fatalf("cannot get store name from %T\n", store)
+		}
+
+		bb.stores = append(bb.stores, storeName)
+
+		var b BucketSpec
+		for _, bucket := range bb.storageSpec.Buckets {
+			if bucket.BucketName == storeName {
+				b = bucket
+				break
+			}
+		}
+		if b.BucketName == "" {
+			log.Fatalf("cannot find bucket spec for  %s\n", storeName)
+		}
+
+		// implicit Get by id
+		get := t.MethodByName("Get")
+		if !get.IsValid() || get.IsZero() {
+			log.Fatalf("cannot find method '%s' on store '%s'\n", "Get", storeName)
+		}
+		bb.allowedMethods[fqmn(storeName, "Get")] = get
+
+		for _, idx := range b.SecondaryIndexes {
+			methodName := IndexMethodName(idx.Type, idx.Name)
+			method := t.MethodByName(methodName)
+			if !method.IsValid() || method.IsZero() {
+				log.Fatalf("cannot find method '%s' on store '%s'\n", methodName, storeName)
+			}
+			bb.allowedMethods[fqmn(storeName, methodName)] = method
+		}
+	}
 }
 
 func (bb *BucketBrowser) RegisterHandlers(e *echo.Echo) {
 	g := e.Group("/ops", bb.allowOnlyAdmins)
 	g.GET("/stores", bb.listAllStores)
-	g.GET("/stores/:store/objects", bb.listStoreObjects)
-	g.GET("/stores/:store/objects/:objectId", bb.getStoreObject)
+	g.GET("/stores/:store/methods", bb.listStoreMethods)
+	g.POST("/stores/:store/object-requests", bb.getStoreObject)
 }
 
 func (bb *BucketBrowser) listAllStores(c echo.Context) error {
 	listing := StoreListing{
-		Stores: make([]string, 0, len(bb.backends)),
-	}
-
-	for _, store := range bb.backends {
-		listing.Stores = append(listing.Stores, store.StoreName())
-
+		Stores: bb.stores,
 	}
 	return c.JSON(http.StatusOK, listing)
 }
 
-func (bb *BucketBrowser) listStoreObjects(c echo.Context) error {
-	storename := c.Param("store")
-	query := c.QueryParam("q")
+func (bb *BucketBrowser) listStoreMethods(c echo.Context) error {
+	storeName := c.Param("store")
+	var methods []string
 
-	for _, store := range bb.backends {
-		if store.StoreName() == storename {
-			listing := StoreObjectsListing{
-				Objects: []string{},
+	for _, b := range bb.storageSpec.Buckets {
+		if b.BucketName == storeName {
+			methods = append(methods, "Get")
+			for _, idx := range b.SecondaryIndexes {
+				methods = append(methods, IndexMethodName(idx.Type, idx.Name))
 			}
-
-			// Cancel after a reasonable timeout, otherwise some safe amount before write timout
-			timeout := 10 * time.Second
-			if c.Echo().Server.WriteTimeout > 0 {
-				timeout = c.Echo().Server.WriteTimeout - 20*time.Millisecond
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			defer cancel()
-
-			for object := range store.ListObjects(ctx) {
-				if query == "" || strings.Contains(object.Key, query) {
-					listing.Objects = append(listing.Objects, object.Key)
-				}
-			}
-
-			return c.JSON(http.StatusOK, listing)
 		}
 	}
 
-	return c.JSON(http.StatusNotFound, nil)
+	return c.JSON(http.StatusOK, MethodListing{
+		Methods: methods,
+	})
 }
 
 func (bb *BucketBrowser) getStoreObject(c echo.Context) error {
-	storename := c.Param("store")
-	filename := c.Param("objectId")
+	storeName := c.Param("store")
 
-	for _, store := range bb.backends {
-		if store.StoreName() == storename {
-			data, info, lerr := store.GetObject(filename)
-			if lerr != nil {
-				return RespondError(c, lerr)
-			}
+	var req BucketBrowserObjectRequest
+	if err := c.Bind(&req); err != nil {
+		return fmt.Errorf("binding bucket browser object request: %w", err)
+	}
 
-			infodata, err := json.Marshal(info)
-			if err != nil {
-				return RespondError(c, NewErrorE(http.StatusInternalServerError, err))
-			}
+	method, ok := bb.allowedMethods[fqmn(storeName, req.Method)]
+	if !ok {
+		return RespondError(c, NewError(http.StatusBadRequest).Msg("invalid method"))
+	}
 
-			var response bytes.Buffer
+	// expects 3 outputs: value, etag, error
+	out := method.Call([]reflect.Value{reflect.ValueOf(req.Field)})
+	if len(out) != 3 {
+		panic("bucket browser: unexpected nbr of outputs")
+	}
 
-			response.WriteString("{\"object\":")
-			response.Write(data)
-			response.WriteString(",\"info\":")
-			response.Write(infodata)
-			response.WriteString("}")
-
-			return c.JSONBlob(http.StatusOK, response.Bytes())
+	if err, ok := out[2].Interface().(*Error); ok && err != nil {
+		if err.HttpStatusCode == http.StatusNotFound {
+			return RespondError(c, err.Msg("object not found"))
+		} else {
+			return RespondError(c, err.Msg("internal storage error"))
 		}
 	}
 
-	return c.JSON(http.StatusNotFound, nil)
+	data, err := json.Marshal(out[0].Interface())
+	if err != nil {
+		return RespondError(c, NewErrorE(http.StatusInternalServerError, err))
+	}
+
+	if out[0].Kind() == reflect.Array ||
+		out[0].Kind() == reflect.Slice {
+		c.JSON(http.StatusOK, ObjectResponse{
+			Objects: (*json.RawMessage)(&data),
+		})
+	}
+
+	return c.JSON(http.StatusOK, ObjectResponse{
+		Object: (*json.RawMessage)(&data),
+	})
 }
 
 func (bb *BucketBrowser) allowOnlyAdmins(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(ctx echo.Context) error {
-		ctx.Set("bearerAuth.Scopes", []string{"admin"})
+		ctx.Set("bearerAuth.Scopes", []string{"admin", "cs"})
 		if _, err := AuthCheckCtx(ctx, bb.jwtAuthKey, "", ""); err != nil {
 			// Note: technically wrong place to handle error, but it'll have to do for now
 			RespondError(ctx, err)
@@ -137,4 +183,9 @@ func (bb *BucketBrowser) allowOnlyAdmins(next echo.HandlerFunc) echo.HandlerFunc
 		}
 		return next(ctx)
 	}
+}
+
+// fully qualified method name
+func fqmn(storeName, methodName string) string {
+	return storeName + "." + methodName
 }
