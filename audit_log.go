@@ -10,7 +10,7 @@ import (
 )
 
 // default audit logger
-var auditLog = zerolog.New(os.Stderr).With().Timestamp().Logger()
+var auditLog = zerolog.New(os.Stdout).With().Timestamp().Logger()
 
 // auditLogKeyType maps context key to zerolog field.
 type auditLogKeyType string
