@@ -42,11 +42,11 @@ var timeSchema = typeDef{
 	Format: "datetime",
 }
 
-func generateBucketBrowserSwagger(projdir string, spec StorageSpec) {
 	var typeNames []string
 	for _, b := range spec.Buckets {
 		typeNames = append(typeNames, b.DbTypeName)
 	}
+func generateBucketBrowserSwagger(projdir string, spec common.ServiceStorageSpec) {
 
 	loadModelsFromDir(path.Join(projdir, "storage"), ModelFileFilter)
 	loadModelsFromDir(path.Join(projdir, "models"), nil)

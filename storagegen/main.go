@@ -22,48 +22,6 @@ const (
 	CmdGenerateBucketBrowser
 )
 
-type BucketSpec struct {
-	TypeName         string
-	SecondaryIndexes []SecondaryIndex
-	DbTypeName       string
-	BucketName       string
-	Template         string
-	Version          string
-	IdName           *string
-	GetAll           *bool
-	FilenameFormat   string
-	Config           *common.ObjectStoreConfig
-}
-
-type SecondaryIndex struct {
-	Key  string
-	Keys []indexField
-
-	Name, Type, CacheKey string
-	Optional             bool
-}
-
-type indexField struct {
-	Key, Param string
-	Optional   bool
-}
-
-type StorageSpec struct {
-	ServiceName string
-	Buckets     []BucketSpec
-}
-
-type Statement struct {
-	Effect   string
-	Action   []string
-	Resource []string
-}
-
-type MinioPolicy struct {
-	Version   string
-	Statement []Statement
-}
-
 func main() {
 	//typeName := "UserStartedClasses"
 	//dbTypeName := "UserStartedClasses"
@@ -82,7 +40,7 @@ func main() {
 		i++
 	}
 
-	spec := readSpec(os.Args[i])
+	spec := common.ReadStorageSpec(os.Args[i])
 	dir := path.Dir(os.Args[i])
 
 	switch cmd {
@@ -95,7 +53,7 @@ func main() {
 	}
 }
 
-func generateStorage(dir string, spec StorageSpec) {
+func generateStorage(dir string, spec common.ServiceStorageSpec) {
 	defaultObjectStoreConfig := common.ObjectStoreConfig{
 		ContentType:        "application/json",
 		ContentDisposition: "",
@@ -125,13 +83,19 @@ func generateStorage(dir string, spec StorageSpec) {
 			default:
 				zl.Fatal().Msg("unknown index 'type': " + idx.Type)
 			}
+
 			if idx.Key == "" && len(idx.Keys) == 0 {
 				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: missing 'key' or 'keys'", b.TypeName, i))
 			} else if idx.Key != "" && len(idx.Keys) > 0 {
 				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: cannot use both 'key' and 'keys'", b.TypeName, i))
 			} else if idx.Key != "" && len(idx.Keys) == 0 {
-				idx.Keys = append(idx.Keys, indexField{Key: idx.Key, Param: "", Optional: false})
+				idx.Keys = append(idx.Keys, common.IndexComponent{
+					Key:      idx.Key,
+					Param:    "", // default to same name as Key
+					Optional: false,
+				})
 			}
+
 			// Ensure key is exported.
 			for _, field := range idx.Keys {
 				if field.Key[0] >= 'a' && field.Key[0] <= 'z' {
@@ -141,12 +105,14 @@ func generateStorage(dir string, spec StorageSpec) {
 					idx.Optional = true
 				}
 			}
+
 			// By convention, compound indexes have the primary discriminant in the last position. E.g. [Partner, Email]
 			lastKey := idx.Keys[len(idx.Keys)-1].Key
 			// Default value for name is key: e.g. Get<All?>ByEmail
 			if idx.Name == "" {
 				idx.Name = lastKey
 			}
+
 			// Default cache key
 			idx.CacheKey = strings.ToLower(lastKey[0:1]) + lastKey[1:]
 			b.SecondaryIndexes[i] = idx
@@ -202,21 +168,6 @@ func pascalCase2SnakeCase(str string) string {
 	return string(b)
 }
 
-func readSpec(filename string) StorageSpec {
-
-	file, err := ioutil.ReadFile(filename)
-	if err != nil {
-		zl.Fatal().Str("err", err.Error()).Str("filename", filename).Msg("failed to load storage spec file")
-	}
-
-	spec := StorageSpec{}
-	err = json.Unmarshal(file, &spec)
-	if err != nil {
-		zl.Fatal().Str("err", err.Error()).Str("filename", filename).Msg("failed to unmarshal storage spec file")
-	}
-	return spec
-}
-
 type TmplParams struct {
 	TypeName         string
 	PrivateTypeName  string
@@ -226,7 +177,7 @@ type TmplParams struct {
 	IdName           string
 	Version          string
 	FilenameFormat   string
-	SecondaryIndexes []SecondaryIndex
+	SecondaryIndexes []common.SecondaryIndex
 	Config           common.ObjectStoreConfig
 	GetAll           bool
 }
@@ -265,7 +216,7 @@ func prettyPrint(i interface{}) string {
 	return string(s)
 }
 
-func camelCaseKey(keys []indexField) []string {
+func camelCaseKey(keys []common.IndexComponent) []string {
 	var s []string
 	for _, idx := range keys {
 		var p string
@@ -295,7 +246,7 @@ func prependString(b string, a []string) []string {
 	return s
 }
 
-func (i indexField) materialize(on string) string {
+func accessField(i common.IndexComponent, on string) string {
 	if i.Optional {
 		return fmt.Sprintf("*%s.%s", on, i.Key)
 	}
@@ -303,15 +254,15 @@ func (i indexField) materialize(on string) string {
 }
 
 // obj []indexes => [obj.Field1, *obj.Field2, ...]
-func materialize(on string, fields []indexField) []string {
+func materialize(on string, fields []common.IndexComponent) []string {
 	var s []string
 	for _, idx := range fields {
-		s = append(s, idx.materialize(on))
+		s = append(s, accessField(idx, on))
 	}
 	return s
 }
 
-func checkOptionalField(on string, fields []indexField) []string {
+func checkOptionalField(on string, fields []common.IndexComponent) []string {
 	var s []string
 	for _, idx := range fields {
 		if idx.Optional {
@@ -322,10 +273,10 @@ func checkOptionalField(on string, fields []indexField) []string {
 }
 
 // orig obj != key => orig.key != obj.key
-func compareFields(a, b, comp string, keys []indexField) []string {
+func compareFields(a, b, comp string, keys []common.IndexComponent) []string {
 	var s []string
 	for _, idx := range keys {
-		s = append(s, idx.materialize(a)+comp+idx.materialize(b))
+		s = append(s, accessField(idx, a)+comp+accessField(idx, b))
 	}
 	return s
 }
