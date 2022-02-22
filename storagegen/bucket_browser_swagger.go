@@ -46,10 +46,12 @@ type property struct {
 var typeAliases = make(map[string]string)
 var structDefs = make(map[string]*ast.StructType)
 
-var timeSchema = typeDef{
-	Type:   "string",
-	Format: "datetime",
-}
+var (
+	timeSchema = typeDef{
+		Type:   "string",
+		Format: "datetime",
+	}
+)
 
 func generateBucketBrowserSwagger(projdir string, spec common.ServiceStorageSpec) {
 
