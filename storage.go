@@ -62,9 +62,9 @@ func ReadStorageSpec(filename string) ServiceStorageSpec {
 func IndexMethodName(settype, attrname string) string {
 	var methodName string
 	switch settype {
-	case "unique":
+	case INDEX_TYPE_UNIQUE:
 		methodName = "GetBy"
-	case "set":
+	case INDEX_TYPE_SET:
 		methodName = "GetAllBy"
 	default:
 		log.Fatalf("method name: unknown index type '%s'\n", settype)

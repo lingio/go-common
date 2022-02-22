@@ -76,9 +76,9 @@ func generateStorage(dir string, spec common.ServiceStorageSpec) {
 		// Patch secondary index default values
 		for i, idx := range b.SecondaryIndexes {
 			switch idx.Type {
-			case "unique":
-				fallthrough
-			case "set":
+			case common.INDEX_TYPE_UNIQUE:
+				break
+			case common.INDEX_TYPE_SET:
 				break
 			default:
 				zl.Fatal().Msg("unknown index 'type': " + idx.Type)
