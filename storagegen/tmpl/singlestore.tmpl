@@ -60,9 +60,9 @@ func {{$filename}}(id string) string {
 	{{- end }}
 }
 
-// Backend returns the underlying lingio store.
-func (s *{{$storeName}}) Backend() common.LingioStore {
-	return s.backend
+// StoreName returns the store name of the backing lingio store.
+func (s *{{$storeName}}) StoreName() string {
+	return s.backend.StoreName()
 }
 
 //=============================================================================

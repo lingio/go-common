@@ -37,6 +37,9 @@ type BucketBrowser struct {
 	storageSpec    ServiceStorageSpec
 }
 
+// NewBucketBrowser exposes a set of storage interfaces over a HTTP API using reflection.
+// Each store must implement the StoreName() method to return the unique name used in the storage spec.
+// The storage spec is inspected and all Get* methods are exported to the HTTP API.
 func NewBucketBrowser(spec ServiceStorageSpec, jwtKey *rsa.PublicKey, stores ...interface{}) *BucketBrowser {
 	bb := &BucketBrowser{
 		jwtAuthKey:     jwtKey,
@@ -53,20 +56,12 @@ func NewBucketBrowser(spec ServiceStorageSpec, jwtKey *rsa.PublicKey, stores ...
 func (bb *BucketBrowser) expose(stores []interface{}) {
 	for _, store := range stores {
 		t := reflect.ValueOf(store)
-		m := t.MethodByName("Backend")
+		m := t.MethodByName("StoreName")
 		if !m.IsValid() || m.IsZero() {
-			log.Fatalf("cannot reflect Backend method on %T\n", store)
+			log.Fatalf("bucket browser: cannot reflect StoreName method on %T\n", store)
 		}
-
-		var storeName string
 		out := m.Call([]reflect.Value{})
-		if ls, ok := out[0].Interface().(LingioStore); ok {
-			storeName = ls.StoreName()
-		} else {
-			log.Fatalf("cannot get store name from %T\n", store)
-		}
-
-		bb.stores = append(bb.stores, storeName)
+		storeName := out[0].String()
 
 		var b BucketSpec
 		for _, bucket := range bb.storageSpec.Buckets {
@@ -76,24 +71,26 @@ func (bb *BucketBrowser) expose(stores []interface{}) {
 			}
 		}
 		if b.BucketName == "" {
-			log.Fatalf("cannot find bucket spec for  %s\n", storeName)
+			log.Fatalf("bucket browser: cannot find bucket spec for  %s\n", storeName)
 		}
 
-		// implicit Get by id
-		get := t.MethodByName("Get")
-		if !get.IsValid() || get.IsZero() {
-			log.Fatalf("cannot find method '%s' on store '%s'\n", "Get", storeName)
-		}
-		bb.allowedMethods[fqmn(storeName, "Get")] = get
-
-		for _, idx := range b.SecondaryIndexes {
-			methodName := IndexMethodName(idx.Type, idx.Name)
+		exportFunc := func(methodName string) {
 			method := t.MethodByName(methodName)
 			if !method.IsValid() || method.IsZero() {
-				log.Fatalf("cannot find method '%s' on store '%s'\n", methodName, storeName)
+				log.Fatalf("bucket browser: cannot find method '%s' on store '%s'\n", methodName, storeName)
 			}
 			bb.allowedMethods[fqmn(storeName, methodName)] = method
 		}
+
+		// implicit Get by id
+		exportFunc("Get")
+
+		for _, idx := range b.SecondaryIndexes {
+			methodName := IndexMethodName(idx.Type, idx.Name)
+			exportFunc(methodName)
+		}
+
+		bb.stores = append(bb.stores, storeName)
 	}
 }
 
