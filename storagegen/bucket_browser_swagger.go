@@ -51,6 +51,11 @@ var (
 		Type:   "string",
 		Format: "datetime",
 	}
+
+	openapiDateSchema = typeDef{
+		Type:   "string",
+		Format: "date",
+	}
 )
 
 func generateBucketBrowserSwagger(projdir string, spec common.ServiceStorageSpec) {
@@ -187,6 +192,8 @@ func swaggerSchemaForExpr(expr ast.Expr) typeDef {
 		if pkg, ok := ss.X.(*ast.Ident); ok {
 			if pkg.Name == "time" && ss.Sel.Name == "Time" {
 				return timeSchema
+			} else if pkg.Name == "openapitypes" && ss.Sel.Name == "Date" {
+				return openapiDateSchema
 			}
 			log.Fatalf("need manual typedef for: %s.%s\n", pkg.Name, ss.Sel.Name)
 		} else {
