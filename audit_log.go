@@ -68,10 +68,16 @@ func WithAction(ctx context.Context, action string) context.Context {
 	return context.WithValue(ctx, actionKey, action)
 }
 
+
 // LogAuditEvent outputs the provided app context
 func LogAuditEvent(ctx context.Context) {
 	evt := auditLog.Info()
 	for _, k := range auditLogFields() {
+		// Don't print credentials.
+		if k == authKey {
+			continue
+		}
+
 		writeContextFieldToLogEvent(ctx, k, evt)
 	}
 	evt.Msg("audit log event")
