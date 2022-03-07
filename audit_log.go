@@ -68,6 +68,10 @@ func WithAction(ctx context.Context, action string) context.Context {
 	return context.WithValue(ctx, actionKey, action)
 }
 
+// AuthTokenFrom extracts the embedded JWT. Will panic if no token exists.
+func AuthTokenFrom(ctx context.Context) string {
+	return ctx.Value(authKey).(string)
+}
 
 // LogAuditEvent outputs the provided app context
 func LogAuditEvent(ctx context.Context) {
