@@ -70,9 +70,10 @@ type FuncSpec struct {
 }
 
 type Spec struct {
-	Get  FuncSpec
-	Put  FuncSpec
-	Post FuncSpec
+	Get    FuncSpec
+	Put    FuncSpec
+	Post   FuncSpec
+	Delete FuncSpec
 }
 
 func ReadSpec(filename string) map[string]Func {
@@ -135,6 +136,12 @@ func ReadSpec(filename string) map[string]Func {
 			funcs[spec.Post.OperationID] = Func{
 				TmplParams: templParams(path, spec.Post),
 				HttpMethod: "POST",
+			}
+		}
+		if spec.Delete.OperationID != "" {
+			funcs[spec.Delete.OperationID] = Func{
+				TmplParams: templParams(path, spec.Delete),
+				HttpMethod: "Delete",
 			}
 		}
 	}

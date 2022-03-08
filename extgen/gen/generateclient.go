@@ -34,7 +34,7 @@ func Postfix(f Func) string {
 	if f.TmplParams.Params == "" {
 		postfix += "NoParams"
 	}
-	if (f.HttpMethod == "POST" || f.HttpMethod == "PUT") && f.TmplParams.BodyType == "" {
+	if (f.HttpMethod == "POST" || f.HttpMethod == "PUT" || f.HttpMethod == "DELETE") && f.TmplParams.BodyType == "" {
 		postfix += "NoBody"
 	}
 	return postfix
@@ -92,7 +92,7 @@ func GenerateAll(funcs []Func, outdir string, packageName string, clientFilename
 		if f.TmplParams.Params == "" {
 			postfix += "NoParams"
 		}
-		if (f.HttpMethod == "POST" || f.HttpMethod == "PUT") && f.TmplParams.BodyType == "" {
+		if (f.HttpMethod == "POST" || f.HttpMethod == "PUT" || f.HttpMethod == "DELETE") && f.TmplParams.BodyType == "" {
 			postfix += "NoBody"
 		}
 		if f.TmplParams.TokenAuth {
