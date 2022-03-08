@@ -4,7 +4,6 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"reflect"
 
@@ -40,7 +39,7 @@ type BucketBrowser struct {
 // NewBucketBrowser exposes a set of storage interfaces over a HTTP API using reflection.
 // Each store must implement the StoreName() method to return the unique name used in the storage spec.
 // The storage spec is inspected and all Get* methods are exported to the HTTP API.
-func NewBucketBrowser(spec ServiceStorageSpec, jwtKey *rsa.PublicKey, stores ...interface{}) *BucketBrowser {
+func NewBucketBrowser(spec ServiceStorageSpec, jwtKey *rsa.PublicKey, stores ...interface{}) (*BucketBrowser, *Error) {
 	bb := &BucketBrowser{
 		jwtAuthKey:     jwtKey,
 		storageSpec:    spec,
@@ -48,17 +47,19 @@ func NewBucketBrowser(spec ServiceStorageSpec, jwtKey *rsa.PublicKey, stores ...
 		allowedMethods: make(map[string]reflect.Value),
 	}
 
-	bb.expose(stores)
+	if err := bb.expose(stores); err != nil {
+		return nil, err
+	}
 
-	return bb
+	return bb, nil
 }
 
-func (bb *BucketBrowser) expose(stores []interface{}) {
+func (bb *BucketBrowser) expose(stores []interface{}) *Error {
 	for _, store := range stores {
 		t := reflect.ValueOf(store)
 		m := t.MethodByName("StoreName")
 		if !m.IsValid() || m.IsZero() {
-			log.Fatalf("bucket browser: cannot reflect StoreName method on %T\n", store)
+			return NewErrorE(http.StatusInternalServerError, fmt.Errorf("cannot reflect StoreName method on %T\n", store))
 		}
 		out := m.Call([]reflect.Value{})
 		storeName := out[0].String()
@@ -71,27 +72,33 @@ func (bb *BucketBrowser) expose(stores []interface{}) {
 			}
 		}
 		if b.BucketName == "" {
-			log.Fatalf("bucket browser: cannot find bucket spec for  %s\n", storeName)
+			return NewErrorE(http.StatusInternalServerError, fmt.Errorf("cannot find bucket spec for  %s\n", storeName))
 		}
 
-		exportFunc := func(methodName string) {
+		exportFunc := func(methodName string) *Error {
 			method := t.MethodByName(methodName)
 			if !method.IsValid() || method.IsZero() {
-				log.Fatalf("bucket browser: cannot find method '%s' on store '%s'\n", methodName, storeName)
+				return NewErrorE(http.StatusInternalServerError, fmt.Errorf("cannot find method '%s' on store '%s'\n", methodName, storeName))
 			}
 			bb.allowedMethods[fqmn(storeName, methodName)] = method
+			return nil
 		}
 
 		// implicit Get by id
-		exportFunc("Get")
+		if err := exportFunc("Get"); err != nil {
+			return err
+		}
 
 		for _, idx := range b.SecondaryIndexes {
 			methodName := IndexMethodName(idx.Type, idx.Name)
-			exportFunc(methodName)
+			if err := exportFunc(methodName); err != nil {
+				return err
+			}
 		}
 
 		bb.stores = append(bb.stores, storeName)
 	}
+	return nil
 }
 
 func (bb *BucketBrowser) RegisterHandlers(e *echo.Echo) {
