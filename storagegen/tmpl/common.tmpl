@@ -1,37 +1,8 @@
 package storage
 
 import (
-	"context"
-	"fmt"
-	"net/http"
 	"strings"
-
-    "github.com/lingio/go-common"
-    "github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/tags"
 )
-
-func writePartnerBucketETag(c *minio.Client, bucketName string, partnerID string, etag string) *common.Error {
-	// Write ETag
-	bucketTags, err := tags.MapToBucketTags(map[string]string{fmt.Sprintf("%s-etag", partnerID): etag})
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).Str("bucketName", bucketName).Msg("failed to create bucket etag")
-	}
-	err = c.SetBucketTagging(context.Background(), bucketName, bucketTags)
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err).Str("bucketName", bucketName).Msg("failed to store bucket etag")
-	}
-	return nil
-}
-
-func getPartnerBucketETag(c *minio.Client, bucketName string, partnerID string) (string, *common.Error) {
-	bucketTags, err := c.GetBucketTagging(context.Background(), bucketName)
-	if err != nil {
-		return "", common.NewErrorE(http.StatusInternalServerError, err).Str("bucketName", bucketName).Msg("failed to get bucket tags")
-	}
-	tagsMap := bucketTags.ToMap()
-	return tagsMap[fmt.Sprintf("%s-etag", partnerID)], nil
-}
 
 func CompoundIndex(indexes ...string) string {
 	return strings.Join(indexes, "-")
