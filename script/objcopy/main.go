@@ -120,7 +120,7 @@ func main() {
 				objchan <- obj
 			}
 		}()
-		log.Println("writing")
+		log.Printf("writing %d objects/sec\n", *nobjsPerSec)
 		// wait on store instead of decoding stdin
 		n := writeIntoStore(store, *nobjsPerSec, objchan)
 		log.Println("done:", n, "objects written")
