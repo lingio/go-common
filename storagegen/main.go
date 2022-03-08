@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -15,42 +16,15 @@ import (
 	zl "github.com/rs/zerolog/log"
 )
 
-type Cmd int
-
-const (
-	CmdGenerateStorage = iota
-	CmdGenerateBucketBrowser
-)
-
 func main() {
-	//typeName := "UserStartedClasses"
-	//dbTypeName := "UserStartedClasses"
-	//bucketName := "user-started-classes"
-	//fileName   := "user_started_classes.gen.go"
-
 	if len(os.Args) < 2 {
-		zl.Fatal().Msg("Usage: go run main.go [bucketbrowser] <spec.json>")
+		zl.Fatal().Msg("Usage: go run main.go <spec.json>")
 	}
 
-	cmd := CmdGenerateStorage
-
-	i := 1
-	if os.Args[i] == "bucketbrowser" {
-		cmd = CmdGenerateBucketBrowser
-		i++
-	}
-
-	spec := common.ReadStorageSpec(os.Args[i])
-	dir := path.Dir(os.Args[i])
-
-	switch cmd {
-	case CmdGenerateStorage:
-		generateStorage(dir, spec)
-	case CmdGenerateBucketBrowser:
-		generateBucketBrowserSwagger(path.Dir(dir), spec)
-	default:
-		zl.Fatal().Int("command", cmd).Msg("unknown command")
-	}
+	specFilepath := os.Args[1]
+	spec := common.ReadStorageSpec(specFilepath)
+	dir := path.Dir(specFilepath)
+	generateStorage(dir, spec)
 }
 
 func generateStorage(dir string, spec common.ServiceStorageSpec) {
@@ -85,9 +59,9 @@ func generateStorage(dir string, spec common.ServiceStorageSpec) {
 			}
 
 			if idx.Key == "" && len(idx.Keys) == 0 {
-				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: missing 'key' or 'keys'", b.TypeName, i))
+				log.Fatalln(fmt.Errorf("%s secondaryIndex[%d]: missing 'key' or 'keys'", b.TypeName, i))
 			} else if idx.Key != "" && len(idx.Keys) > 0 {
-				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: cannot use both 'key' and 'keys'", b.TypeName, i))
+				log.Fatalln(fmt.Errorf("%s secondaryIndex[%d]: cannot use both 'key' and 'keys'", b.TypeName, i))
 			} else if idx.Key != "" && len(idx.Keys) == 0 {
 				idx.Keys = append(idx.Keys, common.IndexComponent{
 					Key:      idx.Key,
@@ -99,7 +73,7 @@ func generateStorage(dir string, spec common.ServiceStorageSpec) {
 			// Ensure key is exported.
 			for _, field := range idx.Keys {
 				if field.Key[0] >= 'a' && field.Key[0] <= 'z' {
-					zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: key '%s' is not exported", b.TypeName, i, field.Key))
+					log.Fatalln(fmt.Errorf("%s secondaryIndex[%d]: key '%s' is not exported", b.TypeName, i, field.Key))
 				}
 				if field.Optional {
 					idx.Optional = true
@@ -197,7 +171,7 @@ func generate(tmplFilename string, params interface{}) []byte {
 	}
 
 	main := path.Base(tmplFilename)
-	tpl, err := template.New(main).Funcs(funcMap).ParseFiles(tmplFilename, "tmpl/lingio_store.tmpl")
+	tpl, err := template.New(main).Funcs(funcMap).ParseFiles(tmplFilename)
 	if err != nil {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to load template")
 	} else if tpl == nil {
