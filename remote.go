@@ -59,6 +59,15 @@ func HttpPut(url string, body interface{}, bearerToken string) ([]byte, *Error) 
 	return executeReq(req)
 }
 
+func HttpDelete(url string, bearerToken string) ([]byte, *Error) {
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return nil, NewError(http.StatusInternalServerError).Msg("failed to create request")
+	}
+	setBearerToken(req, bearerToken)
+	return executeReq(req)
+}
+
 func HttpGetWithApiKey(url string, apiKey string) ([]byte, *Error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
