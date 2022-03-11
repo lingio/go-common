@@ -10,7 +10,7 @@ import (
 )
 
 // default audit logger
-var auditLog = zerolog.New(os.Stderr).With().Timestamp().Logger()
+var auditLog = zerolog.New(os.Stdout).With().Timestamp().Logger()
 
 // auditLogKeyType maps context key to zerolog field.
 type auditLogKeyType string
@@ -68,10 +68,20 @@ func WithAction(ctx context.Context, action string) context.Context {
 	return context.WithValue(ctx, actionKey, action)
 }
 
+// AuthTokenFrom extracts the embedded JWT. Will panic if no token exists.
+func AuthTokenFrom(ctx context.Context) string {
+	return ctx.Value(authKey).(string)
+}
+
 // LogAuditEvent outputs the provided app context
 func LogAuditEvent(ctx context.Context) {
 	evt := auditLog.Info()
 	for _, k := range auditLogFields() {
+		// Don't print credentials.
+		if k == authKey {
+			continue
+		}
+
 		writeContextFieldToLogEvent(ctx, k, evt)
 	}
 	evt.Msg("audit log event")

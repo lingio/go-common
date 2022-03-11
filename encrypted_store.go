@@ -88,6 +88,10 @@ func (es EncryptedStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
 	return objects
 }
 
+func (es EncryptedStore) StoreName() string {
+	return es.backend.StoreName()
+}
+
 func (es *EncryptedStore) encryptFilename(file string) string {
 	tmp := []byte(file)
 	if len(tmp) < 16 {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -15,60 +16,18 @@ import (
 	zl "github.com/rs/zerolog/log"
 )
 
-type BucketSpec struct {
-	TypeName         string
-	SecondaryIndexes []SecondaryIndex
-	DbTypeName       string
-	BucketName       string
-	Template         string
-	Version          string
-	IdName           *string
-	GetAll           *bool
-	FilenameFormat   string
-	Config           *common.ObjectStoreConfig
-}
-
-type SecondaryIndex struct {
-	Key  string
-	Keys []indexField
-
-	Name, Type, CacheKey string
-	Optional             bool
-}
-
-type indexField struct {
-	Key, Param string
-	Optional   bool
-}
-
-type StorageSpec struct {
-	ServiceName string
-	Buckets     []BucketSpec
-}
-
-type Statement struct {
-	Effect   string
-	Action   []string
-	Resource []string
-}
-
-type MinioPolicy struct {
-	Version   string
-	Statement []Statement
-}
-
 func main() {
-	//typeName := "UserStartedClasses"
-	//dbTypeName := "UserStartedClasses"
-	//bucketName := "user-started-classes"
-	//fileName   := "user_started_classes.gen.go"
-
 	if len(os.Args) < 2 {
 		zl.Fatal().Msg("Usage: go run main.go <spec.json>")
 	}
-	spec := readSpec(os.Args[1])
-	dir := path.Dir(os.Args[1])
 
+	specFilepath := os.Args[1]
+	spec := common.ReadStorageSpec(specFilepath)
+	dir := path.Dir(specFilepath)
+	generateStorage(dir, spec)
+}
+
+func generateStorage(dir string, spec common.ServiceStorageSpec) {
 	defaultObjectStoreConfig := common.ObjectStoreConfig{
 		ContentType:        "application/json",
 		ContentDisposition: "",
@@ -91,35 +50,43 @@ func main() {
 		// Patch secondary index default values
 		for i, idx := range b.SecondaryIndexes {
 			switch idx.Type {
-			case "unique":
-				fallthrough
-			case "set":
+			case common.INDEX_TYPE_UNIQUE:
+				break
+			case common.INDEX_TYPE_SET:
 				break
 			default:
 				zl.Fatal().Msg("unknown index 'type': " + idx.Type)
 			}
+
 			if idx.Key == "" && len(idx.Keys) == 0 {
-				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: missing 'key' or 'keys'", b.TypeName, i))
+				log.Fatalln(fmt.Errorf("%s secondaryIndex[%d]: missing 'key' or 'keys'", b.TypeName, i))
 			} else if idx.Key != "" && len(idx.Keys) > 0 {
-				zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: cannot use both 'key' and 'keys'", b.TypeName, i))
+				log.Fatalln(fmt.Errorf("%s secondaryIndex[%d]: cannot use both 'key' and 'keys'", b.TypeName, i))
 			} else if idx.Key != "" && len(idx.Keys) == 0 {
-				idx.Keys = append(idx.Keys, indexField{Key: idx.Key, Param: "", Optional: false})
+				idx.Keys = append(idx.Keys, common.IndexComponent{
+					Key:      idx.Key,
+					Param:    "", // default to same name as Key
+					Optional: false,
+				})
 			}
+
 			// Ensure key is exported.
 			for _, field := range idx.Keys {
 				if field.Key[0] >= 'a' && field.Key[0] <= 'z' {
-					zl.Fatal().Err(fmt.Errorf("%s secondaryIndex[%d]: key '%s' is not exported", b.TypeName, i, field.Key))
+					log.Fatalln(fmt.Errorf("%s secondaryIndex[%d]: key '%s' is not exported", b.TypeName, i, field.Key))
 				}
 				if field.Optional {
 					idx.Optional = true
 				}
 			}
+
 			// By convention, compound indexes have the primary discriminant in the last position. E.g. [Partner, Email]
 			lastKey := idx.Keys[len(idx.Keys)-1].Key
 			// Default value for name is key: e.g. Get<All?>ByEmail
 			if idx.Name == "" {
 				idx.Name = lastKey
 			}
+
 			// Default cache key
 			idx.CacheKey = strings.ToLower(lastKey[0:1]) + lastKey[1:]
 			b.SecondaryIndexes[i] = idx
@@ -146,7 +113,7 @@ func main() {
 		if err != nil {
 			zl.Fatal().Str("err", err.Error()).Msg("failed to load minio template")
 		}
-		if err := formatFile(filepath); err != nil {
+		if err := postprocess(filepath); err != nil {
 			zl.Warn().Str("err", err.Error()).Str("file", filename).Msg("failed to format file")
 		}
 	}
@@ -155,27 +122,6 @@ func main() {
 	err := ioutil.WriteFile(fmt.Sprintf("%s/common.gen.go", dir), bytes, 0644)
 	if err != nil {
 		zl.Fatal().Str("err", err.Error()).Msg("failed to load common template")
-	}
-
-	mp := &MinioPolicy{
-		Version:   "2012-10-17",
-		Statement: make([]Statement, 1),
-	}
-	mp.Statement[0].Effect = "Allow"
-	mp.Statement[0].Action = []string{"s3:GetObject", "s3:PutObject", "s3:ListBucket"}
-	mp.Statement[0].Resource = make([]string, 0)
-
-	for _, b := range spec.Buckets {
-		mp.Statement[0].Resource = append(mp.Statement[0].Resource, fmt.Sprintf("arn:aws:s3:::%s", b.BucketName))
-		mp.Statement[0].Resource = append(mp.Statement[0].Resource, fmt.Sprintf("arn:aws:s3:::%s/*", b.BucketName))
-	}
-	bytes2, err := json.MarshalIndent(mp, "", "  ")
-	if err != nil {
-		zl.Fatal().Msg("failed marshalling to json")
-	}
-	err = ioutil.WriteFile(fmt.Sprintf("%s/minio_policy.json", dir), bytes2, 0644)
-	if err != nil {
-		zl.Fatal().Msg("failed to write minio policy to file")
 	}
 }
 
@@ -196,21 +142,6 @@ func pascalCase2SnakeCase(str string) string {
 	return string(b)
 }
 
-func readSpec(filename string) StorageSpec {
-
-	file, err := ioutil.ReadFile(filename)
-	if err != nil {
-		zl.Fatal().Str("err", err.Error()).Str("filename", filename).Msg("failed to load storage spec file")
-	}
-
-	spec := StorageSpec{}
-	err = json.Unmarshal(file, &spec)
-	if err != nil {
-		zl.Fatal().Str("err", err.Error()).Str("filename", filename).Msg("failed to unmarshal storage spec file")
-	}
-	return spec
-}
-
 type TmplParams struct {
 	TypeName         string
 	PrivateTypeName  string
@@ -220,13 +151,9 @@ type TmplParams struct {
 	IdName           string
 	Version          string
 	FilenameFormat   string
-	SecondaryIndexes []SecondaryIndex
+	SecondaryIndexes []common.SecondaryIndex
 	Config           common.ObjectStoreConfig
 	GetAll           bool
-}
-
-type TmplParams2 struct {
-	Buckets []BucketSpec
 }
 
 func generate(tmplFilename string, params interface{}) []byte {
@@ -242,13 +169,9 @@ func generate(tmplFilename string, params interface{}) []byte {
 		"Materialize":   materialize,
 		"CheckOptional": checkOptionalField,
 	}
-	tpltxt, err := os.ReadFile(tmplFilename)
-	if err != nil {
-		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to read template")
-	}
 
-	// tpl, err := template.ParseFiles(tmplFilename)
-	tpl, err := template.New(path.Base(tmplFilename)).Funcs(funcMap).Parse(string(tpltxt))
+	main := path.Base(tmplFilename)
+	tpl, err := template.New(main).Funcs(funcMap).ParseFiles(tmplFilename)
 	if err != nil {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to load template")
 	} else if tpl == nil {
@@ -267,7 +190,7 @@ func prettyPrint(i interface{}) string {
 	return string(s)
 }
 
-func camelCaseKey(keys []indexField) []string {
+func camelCaseKey(keys []common.IndexComponent) []string {
 	var s []string
 	for _, idx := range keys {
 		var p string
@@ -297,7 +220,7 @@ func prependString(b string, a []string) []string {
 	return s
 }
 
-func (i indexField) materialize(on string) string {
+func accessField(i common.IndexComponent, on string) string {
 	if i.Optional {
 		return fmt.Sprintf("*%s.%s", on, i.Key)
 	}
@@ -305,15 +228,15 @@ func (i indexField) materialize(on string) string {
 }
 
 // obj []indexes => [obj.Field1, *obj.Field2, ...]
-func materialize(on string, fields []indexField) []string {
+func materialize(on string, fields []common.IndexComponent) []string {
 	var s []string
 	for _, idx := range fields {
-		s = append(s, idx.materialize(on))
+		s = append(s, accessField(idx, on))
 	}
 	return s
 }
 
-func checkOptionalField(on string, fields []indexField) []string {
+func checkOptionalField(on string, fields []common.IndexComponent) []string {
 	var s []string
 	for _, idx := range fields {
 		if idx.Optional {
@@ -324,10 +247,10 @@ func checkOptionalField(on string, fields []indexField) []string {
 }
 
 // orig obj != key => orig.key != obj.key
-func compareFields(a, b, comp string, keys []indexField) []string {
+func compareFields(a, b, comp string, keys []common.IndexComponent) []string {
 	var s []string
 	for _, idx := range keys {
-		s = append(s, idx.materialize(a)+comp+idx.materialize(b))
+		s = append(s, accessField(idx, a)+comp+accessField(idx, b))
 	}
 	return s
 }
@@ -336,7 +259,9 @@ func joinString(b string, a []string) string {
 	return strings.Join(a, b)
 }
 
-func formatFile(filepath string) error {
+func postprocess(filepath string) error {
+	var gofmt bool
+	var imports bool
 	// If go is installed the standard way from https://golang.org/doc/install
 	// then we will detect at least Linux and MacOS. Special case for Ubuntu snap.
 	for _, gobin := range []string{"go", "/snap/bin/go", "/usr/local/go/bin/go"} {
@@ -346,8 +271,32 @@ func formatFile(filepath string) error {
 		}
 
 		cmd := exec.Command(exe, "fmt", filepath)
-		return cmd.Run()
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("format '%s': %w", filepath, err)
+		}
+		gofmt = true
+		break
 	}
-	zl.Warn().Str("file", filepath).Msg("skipping go fmt")
+
+	for _, goimp := range []string{"goimports", "/snap/bin/goimports", "/usr/local/go/bin/goimports"} {
+		exe, err := exec.LookPath(goimp)
+		if err != nil {
+			continue
+		}
+
+		cmd := exec.Command(exe, "-w", "-srcdir", filepath, filepath)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("goimport '%s': %w", filepath, err)
+		}
+		imports = true
+		break
+	}
+
+	if !gofmt {
+		zl.Warn().Str("file", filepath).Msg("skipping go fmt")
+	}
+	if !imports {
+		zl.Warn().Str("file", filepath).Msg("skipping goimports")
+	}
 	return nil
 }

@@ -62,6 +62,11 @@ func {{$filename}}(id string) string {
 	{{- end }}
 }
 
+// StoreName returns the store name of the backing lingio store.
+func (s *{{$storeName}}) StoreName() string {
+	return s.backend.StoreName()
+}
+
 //=============================================================================
 // Store implementation
 //=============================================================================

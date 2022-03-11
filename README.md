@@ -60,11 +60,15 @@ redisCache := common.NewRedisCache(redisClient, "x-cache-it", "v2")
 ## scripts
 
 - `script/objcopy`: read/write objects from/to bucket from one s3 endpoint
-  > `MINIO_SECRET=xyz go run ./script/objcopy --from=path/to/{stage|local|local-stage}.json --bucket=xyz`
+  > `MINIO_SECRET=xyz go run ./script/objcopy --from=path/to/{stage,local,local-stage}.json --bucket=xyz`
 - `script/encrypt`: encrypt or decrypt plaintext objects on stdin
   > `ENCRYPTION_KEY=256bitkey go run ./script/encrypt`
 - `script/fromfile`: read filenames from stdin and write object to stdout
+  > `find ./dir -not -type d | go run ./script/fromfile`
 - `script/tofile`: read objects from stdin and write files
+  > `... go run ./script/objcopy | go run ./script/tofile -root=./dir`
+- `script/objify`: like `fromfile` but reads raw json objects
+  > `cat data.jsonl | go run ./script/objify`
 
 ##### Write plaintext objects to disk from an encrypted object storage
 

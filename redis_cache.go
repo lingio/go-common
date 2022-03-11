@@ -70,24 +70,24 @@ func NewRedisCache(client *redis.Client, name, version string) *RedisCache {
 // up sentinel addrs using the provided service DNS, or 2) attempt to create a
 // simple redis client using the provided simpleAddr. If all three arguments are
 // empty, the function will return ErrInvalidRedisConfig.
-func SetupRedisClient(simpleAddr, masterName, serviceDNS string) (*redis.Client, error) {
-	if masterName != "" && serviceDNS != "" {
-		_, srvs, err := net.LookupSRV("redis", "tcp", serviceDNS)
+func SetupRedisClient(cfg RedisConfig) (*redis.Client, error) {
+	if cfg.MasterName != "" && cfg.ServiceDNS != "" {
+		_, srvs, err := net.LookupSRV("redis", "tcp", cfg.ServiceDNS)
 		if err != nil {
-			return nil, &RedisSetupErr{Err: err, MasterName: masterName, ServiceDNS: serviceDNS}
+			return nil, &RedisSetupErr{Err: err, MasterName: cfg.MasterName, ServiceDNS: cfg.ServiceDNS}
 		}
 		sentinelAddrs := make([]string, 0)
 		for _, srv := range srvs {
 			sentinelAddrs = append(sentinelAddrs, fmt.Sprintf("%s:%d", srv.Target, srv.Port))
 		}
 		return redis.NewFailoverClient(&redis.FailoverOptions{
-			MasterName:    masterName,
+			MasterName:    cfg.MasterName,
 			SentinelAddrs: sentinelAddrs,
 		}), nil
 	}
 
-	if simpleAddr != "" {
-		return redis.NewClient(&redis.Options{Addr: simpleAddr}), nil
+	if cfg.Addr != "" {
+		return redis.NewClient(&redis.Options{Addr: cfg.Addr}), nil
 	}
 
 	return nil, &RedisSetupErr{Err: ErrInvalidRedisConfig}
