@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
+	"time"
 )
 
 /* 	Fetch from remote service
@@ -28,7 +30,12 @@ func HttpGet(url string, bearerToken string) ([]byte, *Error) {
 		return nil, NewError(http.StatusInternalServerError).Msg("failed to create request")
 	}
 	setBearerToken(req, bearerToken)
-	return executeReq(req)
+
+	shouldRetry := func(code, attempt int) bool {
+		return isHttpStatusRetryable(code) && attempt < 3
+	}
+
+	return executeReqWithRetry(req, shouldRetry, exponentialBackoff)
 }
 
 func HttpPost(url string, body interface{}, bearerToken string) ([]byte, *Error) {
@@ -124,6 +131,32 @@ func executeReq(req *http.Request) ([]byte, *Error) {
 	return data, nil
 }
 
+// ShouldRetry returns whether a request can be retried:
+//    code    = http status code
+//    attempt = 0-based retry counter
+type ShouldRetry func(code, attempt int) bool
+
+// Backoff returns the time to wait for request retry attempt.
+type Backoff func(attempt int) time.Duration
+
+func executeReqWithRetry(req *http.Request, shouldRetry ShouldRetry, backoff Backoff) ([]byte, *Error) {
+	var attempt int
+	for {
+		data, err := executeReq(req)
+		if err == nil {
+			return data, nil
+		}
+
+		if shouldRetry(err.HttpStatusCode, attempt) {
+			time.Sleep(backoff(attempt))
+			attempt++
+			continue
+		}
+
+		return nil, err
+	}
+}
+
 func setBearerToken(req *http.Request, bearerToken string) {
 	bearerHeader := fmt.Sprintf("Bearer %s", bearerToken)
 	if bearerToken != "" {
@@ -145,4 +178,36 @@ func createBodyBuffer(body interface{}) (*bytes.Buffer, *Error) {
 		bodyBuffer = bytes.NewBuffer(jsonValue)
 	}
 	return bodyBuffer, nil
+}
+
+// exponentialBackoff returns a backoff function:
+//   y = 2^attempt (seconds)
+// where
+//	attempt = min(attempt, 6)
+// which implies that max wait is 64s
+func exponentialBackoff(attempt int) time.Duration {
+	if attempt > 6 {
+		attempt = 6
+	}
+	n := math.Pow(2, float64(attempt))
+	t := time.Duration(int64(time.Second) * int64(n))
+	return t
+}
+
+// isHttpStatusRetryable
+func isHttpStatusRetryable(statusCode int) bool {
+	// Enable these carefully! Might have unexpected effects on service
+	// behavior.
+	switch statusCode {
+	// case http.StatusRequestTimeout: // Perhaps too loaded
+	// case http.StatusTooEarly: // Resource not yet ready
+	case http.StatusTooManyRequests: // Rate limited
+	case http.StatusBadGateway: // Cluster config / dns
+	// case http.StatusServiceUnavailable: // Cluster config / dns
+	// case http.StatusGatewayTimeout: // Cluster config / dns
+	default:
+		return false
+	}
+
+	return true
 }
