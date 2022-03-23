@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -29,6 +30,9 @@ type dummyStore struct {
 //
 // ENCRYPTION_KEY=256bit-key go run ./script/encrypt [--decrypt]
 func main() {
+	log.Default().SetOutput(os.Stderr)
+	log.Default().SetPrefix("[encrypt]")
+
 	decrypt := flag.Bool("decrypt", false, "decrypt stdin (instead of encrypt)")
 	serviceKey := os.Getenv("ENCRYPTION_KEY")
 	flag.Parse()
@@ -50,16 +54,22 @@ func main() {
 			data, info, err := store.GetObject("dummyfilename16b") // read from stdin and decrypt
 			if err != nil && err.Unwrap() == io.EOF {
 				break
+			} else if err != nil {
+				trap(fmt.Errorf("read: %w", err))
 			}
-			ds.PutObject(context.TODO(), info.Key, data) // write plain text to stdout
+			_, lerr := ds.PutObject(context.TODO(), info.Key, data) // write plain text to stdout
+			trap(lerr)
 		}
 	} else {
 		for {
 			data, info, err := ds.GetObject("") // read directly from stdin
 			if err != nil && err.Unwrap() == io.EOF {
 				break
+			} else if err != nil {
+				trap(fmt.Errorf("read: %w", err))
 			}
-			store.PutObject(context.TODO(), info.Key, data) // write encrypted to stdout
+			_, lerr := store.PutObject(context.TODO(), info.Key, data) // write encrypted to stdout
+			trap(lerr)
 		}
 	}
 }
