@@ -48,7 +48,7 @@ func main() {
 	dstEnv := flag.String("to", "", "json config file with minio target to write to")
 	bucket := flag.String("bucket", "", "bucket to read from or write to")
 	renameFmt := flag.String("rename", "{KEY}{EXT}", "rename object using key and parsed extension")
-	nobjsPerSec := flag.Int("obj-per-sec", 100, "rate limit object writes per second")
+	nobjsPerSec := flag.Int("obj-per-sec", 1000, "rate limit object writes per second")
 	minioSecret := os.Getenv("MINIO_SECRET")
 	flag.Parse()
 
