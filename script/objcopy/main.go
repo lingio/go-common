@@ -93,7 +93,7 @@ func main() {
 	trap(err)
 
 	if len(*srcEnv) > 0 {
-		log.Println("reading ...")
+		log.Println("reading from", *bucket, "...")
 		// Read from store and write json-encoding to stdout
 		var n int
 		encoder := json.NewEncoder(os.Stdout)
@@ -120,7 +120,7 @@ func main() {
 				objchan <- obj
 			}
 		}()
-		log.Printf("writing %d objects/sec\n", *nobjsPerSec)
+		log.Printf("writing %d objects/sec to %s\n", *nobjsPerSec, *bucket)
 		// wait on store instead of decoding stdin
 		n := writeIntoStore(store, *nobjsPerSec, objchan)
 		log.Println("done:", n, "objects written")
