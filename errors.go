@@ -87,7 +87,7 @@ func (e *Error) Str(k string, v string) *Error {
 
 func (e *Error) Int(k string, v int) *Error {
 	e.ensureMapNotNil()
-	e.Map[k] = fmt.Sprintf("%d", v)
+	e.Map[k] = strconv.Itoa(v)
 	return e
 }
 
