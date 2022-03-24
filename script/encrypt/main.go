@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,9 @@ type dummyStore struct {
 	encoder *json.Encoder
 }
 
+var noV2 bool
+var v2header = [...]byte{'v', 2, '/'}
+
 //
 // Usage:
 //
@@ -34,6 +38,7 @@ func main() {
 	log.Default().SetPrefix("[encrypt]")
 
 	decrypt := flag.Bool("decrypt", false, "decrypt stdin (instead of encrypt)")
+	flag.BoolVar(&noV2, "nov2", false, "if set, panics when trying to decrypt v2 crypto data")
 	serviceKey := os.Getenv("ENCRYPTION_KEY")
 	flag.Parse()
 
@@ -85,6 +90,14 @@ func (ds dummyStore) GetObject(filename string) ([]byte, common.ObjectInfo, *com
 	var obj Object
 	if err := ds.decoder.Decode(&obj); err != nil {
 		return nil, common.ObjectInfo{}, common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	if noV2 {
+		if bytes.HasPrefix([]byte(obj.Key), v2header[:]) {
+			panic(fmt.Errorf("object key %q starts with v2 magic header: %s", obj.Key, v2header))
+		}
+		if bytes.HasPrefix(obj.Data, v2header[:]) {
+			panic(fmt.Errorf("object data %v starts with v2 magic header: %s", obj.Data, v2header))
+		}
 	}
 	return obj.Data, obj.ObjectInfo, nil
 }
