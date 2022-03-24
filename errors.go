@@ -84,8 +84,21 @@ func (e *Error) ensureMapNotNil() {
 	}
 }
 
+// Unwrap implements returns the underlying error type for errors.Unwrap(err)
 func (e *Error) Unwrap() error {
 	return e.err
+}
+
+// Is returns whether the target error is the same as this one, useful for errors.Is:
+//   errors.Is(myError, ErrObjectDoesNotExist)
+func (e *Error) Is(target error) bool {
+	if e.err == target {
+		return true
+	} else if err, ok := target.(*Error); ok {
+		return err.HttpStatusCode == e.HttpStatusCode && err.Message == e.Message
+	} else {
+		return false
+	}
 }
 
 func getErrorTrace() string {
@@ -95,4 +108,5 @@ func getErrorTrace() string {
 	}
 	filename = filepath.Base(filename)
 	return fmt.Sprintf("%v:%v", filename, line)
+
 }
