@@ -1,6 +1,7 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -33,6 +34,29 @@ func (e *Error) Error() string {
 	str.WriteString(". message: ")
 	str.WriteString(e.Message)
 	str.WriteString(".")
+	return str.String()
+}
+
+func (e *Error) FullTrace() string {
+	var str strings.Builder
+	str.WriteString(e.Trace)
+
+	err := error(e)
+	for {
+		err = errors.Unwrap(err)
+		if err == nil {
+			break
+		}
+		str.WriteString("\n")
+		str.WriteString(" \\")
+		if lerr, ok := err.(*Error); ok {
+			str.WriteString(lerr.Trace)
+			str.WriteString(": ")
+			str.WriteString(lerr.Message)
+		} else {
+			str.WriteString(err.Error())
+		}
+	}
 	return str.String()
 }
 
