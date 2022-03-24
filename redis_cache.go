@@ -96,9 +96,9 @@ func SetupRedisClient(cfg RedisConfig) (*redis.Client, error) {
 //=============================================================================
 // statusProbe interface:
 
-// Started indicates if the cache is warmed up.
+// Started indicates if the cache is reachable.
 func (c RedisCache) Started() bool {
-	return c.WarmedUp.IsSet()
+	return c.Live()
 }
 
 // Ready indicates that the cache is warmed up and ready to serve requests.

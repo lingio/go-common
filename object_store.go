@@ -49,8 +49,12 @@ func (os ObjectStore) GetObject(file string) ([]byte, ObjectInfo, *Error) {
 	if err != nil {
 		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file)
 	}
+	// object.Read/Stat calls are mutex-guarded so there is no parallelism speedup
 	data, err := ioutil.ReadAll(object)
 	if err != nil {
+		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file)
+	}
+	if err := object.Close(); err != nil {
 		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file)
 	}
 	stat, err := object.Stat()
