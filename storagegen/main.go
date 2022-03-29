@@ -163,8 +163,6 @@ func generate(tmplFilename string, params interface{}) []byte {
 		"PrettyPrint":   prettyPrint,
 		"CamelCase":     camelCaseKey,
 		"Join":          joinString,
-		"Append":        appendString,
-		"Prepend":       prependString,
 		"CompareFields": compareFields,
 		"Materialize":   materialize,
 		"CheckOptional": checkOptionalField,
@@ -201,22 +199,6 @@ func camelCaseKey(keys []common.IndexComponent) []string {
 			p = idx.Key
 		}
 		s = append(s, strings.ToLower(p[0:1])+p[1:])
-	}
-	return s
-}
-
-func appendString(b string, a []string) []string {
-	var s []string
-	for _, str := range a {
-		s = append(s, str+b)
-	}
-	return s
-}
-
-func prependString(b string, a []string) []string {
-	var s []string
-	for _, str := range a {
-		s = append(s, b+str)
 	}
 	return s
 }
