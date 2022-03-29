@@ -1,7 +1,6 @@
 package common
 
 import (
-	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -10,17 +9,26 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 )
 
 var ErrDecrypt = errors.New("encrypted store: decryption error")
 
-var encstoreV1Header = []byte{}               // there was no header in version 1 :(
-var encstoreV2Header = [...]byte{'v', 2, '/'} // magic byte sequence for detecting encryption store scheme
+//
+type cryptoModule interface {
+	encryptFilename(plaintext string) string
+	decryptFilename(ciphertext string) string
+
+	encryptData(nonce, data []byte) []byte
+	decryptData(ciphertext []byte) []byte
+}
+
+//
 
 // EncryptedStore
 type EncryptedStore struct {
 	backend LingioStore
+
+	crypto cryptoModule
 
 	cipher cipher.Block // v1: ciphertext[16b]||plaintext
 	aesgcm cipher.AEAD  // v2: header[3b]||nonce[12b]||ciphertext
@@ -52,33 +60,20 @@ func NewEncryptedStore(backend LingioStore, cipherKey string) (*EncryptedStore, 
 func (es *EncryptedStore) GetObject(file string) ([]byte, ObjectInfo, *Error) {
 	// We don't know which crypto gen to use to map plaintext filename to ciphertext filename
 	// so we can only do trail and error.
-	data, info, err := es.backend.GetObject(es.encryptFilename1(file))
+	data, info, err := es.backend.GetObject(es.crypto.encryptFilename(file))
 	if err != nil {
-		data, info, err = es.backend.GetObject(es.encryptFilename2(file))
-		if err != nil {
-			return nil, ObjectInfo{}, err
-		}
+		return nil, ObjectInfo{}, err
 	}
 
-	var plaintext []byte
-	if isV2Crypto(data, info.Key) {
-		plaintext, _ = es.decrypt2(data)
-	} else {
-		plaintext = es.decrypt1(data)
-	}
-
-	if filename, _, err := es.decryptFilename(info.Key); err != nil {
-		return nil, ObjectInfo{}, NewErrorE(http.StatusInternalServerError, err)
-	} else {
-		info.Key = filename
-	}
+	plaintext := es.crypto.decryptData(data)
+	info.Key = es.crypto.decryptFilename(info.Key)
 
 	return plaintext, info, nil
 }
 
 func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byte) (ObjectInfo, *Error) {
-	encdata := es.encrypt2(data, nil) // generate new nonce for every write
-	encfile := es.encryptFilename2(file)
+	encdata := es.crypto.encryptData(nil, data) // generate new nonce for every write
+	encfile := es.crypto.encryptFilename(file)
 
 	info, err := es.backend.PutObject(ctx, encfile, encdata)
 	if err != nil {
@@ -89,13 +84,7 @@ func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byt
 }
 
 func (es EncryptedStore) DeleteObject(ctx context.Context, file string) *Error {
-	// We don't know which crypto gen to use to map plaintext filename to ciphertext filename
-	// so we can only do trail and error.
-	err := es.backend.DeleteObject(ctx, es.encryptFilename1(file))
-	if err != nil {
-		return es.backend.DeleteObject(ctx, es.encryptFilename2(file))
-	}
-	return nil
+	return es.backend.DeleteObject(ctx, es.crypto.encryptFilename(file))
 }
 
 // ListObjects will list all decryptable objects.
@@ -103,14 +92,19 @@ func (es EncryptedStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
 	listing := es.backend.ListObjects(ctx)
 	objects := make(chan ObjectInfo, 10)
 	go func() {
+			defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%w: %v", ErrDecrypt, r)
+		}
+	}()
+
+
 		defer close(objects)
 		for info := range listing {
 			// If backing store contains objects encrypted with another key or
 			// scheme, we should silently ignore them for now since the channel
 			// consumer cannot do anything worthwhile with that object anyway.
-			key, _, err := es.decryptFilename(info.Key)
-			if err != nil {
-				continue
+			key := es.crypto.decryptFilename(info.Key)
 			}
 			info.Key = key
 			objects <- info
@@ -123,120 +117,81 @@ func (es EncryptedStore) StoreName() string {
 	return es.backend.StoreName()
 }
 
-// encryptFilename1
-func (es *EncryptedStore) encryptFilename1(plaintext string) string {
-	key := []byte(plaintext)
-	es.cipher.Encrypt(key, key)
-	return base32.StdEncoding.EncodeToString(key)
+// v1Crypto implements partial object+filename encryption.
+type v1Crypto struct {
+	cipher cipher.Block
 }
 
-func (es *EncryptedStore) encryptFilename2(plaintext string) string {
-	key := []byte(plaintext)
-	nonce := key[0:es.aesgcm.NonceSize()]
-	ciphertext := es.encrypt2(nonce, key)
+func (c v1Crypto) encryptFilename(plaintext string) string {
+	ciphertext := []byte(plaintext)
+	c.cipher.Encrypt(nil, ciphertext)
 	return base32.StdEncoding.EncodeToString(ciphertext)
 }
 
-func (es *EncryptedStore) decryptFilename(ciphertext string) (_ string, _ []byte, err error) {
-	// guard against Decrypt throwing a panic
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("%w: %v", ErrDecrypt, r)
-		}
-	}()
-
+func (c v1Crypto) decryptFilename(ciphertext string) string {
 	decodedCiphertext, err := base32.StdEncoding.DecodeString(ciphertext)
 	if err != nil {
-		return "", nil, fmt.Errorf("base32 decode: %q: %w", ciphertext, err)
+		panic(fmt.Errorf("base32 decode: %q: %w", ciphertext, err))
 	}
-
-	var plaintext []byte
-	var nonce []byte
-	if isV2Crypto(nil, ciphertext) {
-		plaintext, plaintext = es.decrypt2(decodedCiphertext)
-	} else {
-		plaintext = es.decrypt1(decodedCiphertext)
-	}
-
-	return string(plaintext), nonce, nil
+	return string(c.decryptData(decodedCiphertext))
 }
 
-func (es *EncryptedStore) decrypt1(data []byte) []byte {
-	es.cipher.Decrypt(data, data)
+func (c v1Crypto) encryptData(nonce, data []byte) []byte {
+	// nonce is not used
+	c.cipher.Encrypt(data, data)
 	return data
 }
 
-func (es *EncryptedStore) decrypt2(data []byte) ([]byte, []byte) {
-	offset := len(encstoreV2Header)
-	nonce := data[offset : offset+es.aesgcm.NonceSize()]
-	offset += es.aesgcm.NonceSize()
-	ciphertext := data[offset:]
+func (c v1Crypto) decryptData(data []byte) []byte {
+	c.cipher.Decrypt(data, data)
+	return data
+}
 
-	plaintext, err := es.aesgcm.Open(nil, nonce, ciphertext, nil)
+// v2Crypto implements full object+filename encryption.
+type v2Crypto struct {
+	aesgcm cipher.AEAD
+}
+
+func (c v2Crypto) encryptFilename(plaintext string) string {
+	key := []byte(plaintext)
+	nonce := key[0:c.aesgcm.NonceSize()]
+	ciphertext := c.encryptData(nonce, key)
+	return base32.StdEncoding.EncodeToString(ciphertext)
+}
+
+func (c v2Crypto) decryptFilename(ciphertext string) string {
+	decodedCiphertext, err := base32.StdEncoding.DecodeString(ciphertext)
 	if err != nil {
-		panic(fmt.Errorf("encrypted store: decrypt: %w", err))
+		panic(fmt.Errorf("base32 decode: %q: %w", ciphertext, err))
 	}
-	return nonce, plaintext
+	return string(c.decryptData(decodedCiphertext))
 }
 
-func (es *EncryptedStore) encrypt1(data []byte) []byte {
-	es.cipher.Encrypt(data, data)
-	return data
-}
-
-func (es *EncryptedStore) encrypt2(data []byte, nonce []byte) []byte {
+func (c v2Crypto) encryptData(nonce, data []byte) []byte {
 	if nonce == nil {
-		nonce = make([]byte, es.aesgcm.NonceSize())
+		nonce = make([]byte, c.aesgcm.NonceSize())
 		if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 			panic(fmt.Errorf("encrypted store: could not generate nonce: %w", err))
 		}
 	}
 
 	// ciphertext reuses data slice
-	ciphertext := es.aesgcm.Seal(data[:0], nonce, data, nil)
+	ciphertext := c.aesgcm.Seal(data[:0], nonce, data, nil)
 
-	// header||nonce||ciphertext
-	blob := encstoreV2Header[:]
+	// nonce||ciphertext
+	var blob []byte
 	blob = append(blob, nonce...)
 	blob = append(blob, ciphertext...)
 	return blob
 }
 
-// ReEncryptObject will fetch an object and re-encrypt it with v2 scheme if
-// determined to be old crypto scheme. The the object key must be encrypted.
-// Will remove the passed key if re-encryption (to a new filename) succeeds.
-func (es *EncryptedStore) ReEncryptObject(ctx context.Context, encObjectKey string) error {
-	ciphertext, _, err := es.backend.GetObject(encObjectKey)
+func (c v2Crypto) decryptData(data []byte) []byte {
+	nonce := data[:c.aesgcm.NonceSize()]
+	ciphertext := data[c.aesgcm.NonceSize():]
+
+	plaintext, err := c.aesgcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return fmt.Errorf("get %q: %w", encObjectKey, err)
+		panic(fmt.Errorf("encrypted store: decrypt: %w", err))
 	}
-
-	if isV2Crypto(ciphertext, encObjectKey) {
-		return fmt.Errorf("already encrypted: %q", encObjectKey)
-	}
-
-	filename, _, lerr := es.decryptFilename(encObjectKey)
-	if lerr != nil {
-		return fmt.Errorf("%q: %w", encObjectKey, lerr)
-	}
-
-	plaintext := es.decrypt1(ciphertext)
-	encfile := es.encryptFilename2(filename)
-	encdata := es.encrypt2(plaintext, nil)
-
-	if _, err := es.backend.PutObject(ctx, encfile, encdata); err != nil {
-		return fmt.Errorf("writing new %q: %w", encfile, err)
-	}
-
-	// since re-encrypted object will have a differet filename, we must cleanup old object
-	if err := es.backend.DeleteObject(ctx, encObjectKey); err != nil {
-		return fmt.Errorf("removing old %q: %w", encObjectKey, err)
-	}
-
-	return nil
-}
-
-func isV2Crypto(data []byte, filename string) bool {
-	return bytes.HasPrefix([]byte(filename), encstoreV2Header[:]) &&
-		bytes.HasPrefix(data, encstoreV2Header[:])
+	return plaintext
 }
