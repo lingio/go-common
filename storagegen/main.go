@@ -168,6 +168,7 @@ func generate(tmplFilename string, params interface{}) []byte {
 		"CompareFields": compareFields,
 		"Materialize":   materialize,
 		"CheckOptional": checkOptionalField,
+		"IndexKeysOnly": filterIndexKeys,
 	}
 
 	main := path.Base(tmplFilename)
@@ -231,7 +232,20 @@ func accessField(i common.IndexComponent, on string) string {
 func materialize(on string, fields []common.IndexComponent) []string {
 	var s []string
 	for _, idx := range fields {
-		s = append(s, accessField(idx, on))
+		if !idx.ExclFromIndex {
+			s = append(s, accessField(idx, on))
+		}
+	}
+	return s
+}
+
+func filterIndexKeys(keys []common.IndexComponent) []common.IndexComponent {
+	var s []common.IndexComponent
+	for _, key := range keys {
+		if key.ExclFromIndex {
+			continue
+		}
+		s = append(s, key)
 	}
 	return s
 }
@@ -250,6 +264,12 @@ func checkOptionalField(on string, fields []common.IndexComponent) []string {
 func compareFields(a, b, comp string, keys []common.IndexComponent) []string {
 	var s []string
 	for _, idx := range keys {
+		// Skip excluded optional indexes since they will always return true or false:
+		//   - *a.B != *b.B --> always true unless a.B and b.B points to same B
+		//   - *a.B == *b.B --> always false unless a.B and b.B points to same B
+		if idx.ExclFromIndex && idx.Optional {
+			continue
+		}
 		s = append(s, accessField(idx, a)+comp+accessField(idx, b))
 	}
 	return s

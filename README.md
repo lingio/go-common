@@ -38,6 +38,16 @@ redisCache := common.NewRedisCache(redisClient, "x-cache-it", "v2")
         { "keys": [{ "key": "Email", "optional": true }], "type": "unique" },
         // GetByPartnerAndEmail, builds a compound index on models.{dbTypeName}.Partner and *models.{dbTypeName}.Email if it not nil
         { "keys": [{ "key": "Partner" }, { "key": "Email", "optional": true }], "type": "unique", "name": "PartnerAndEmail" },
+        // GetAllByPartnerAndStudentGroup
+        {
+          "keys": [
+            { "key": "Partner" },
+            { "key": "Student", "optional": true, "exclFromIndex": true },
+            { "key": "Student.GroupID", "param": "groupID" }
+          ],
+          "type": "set",
+          "name": "PartnerAndStudentGroup"
+        },
         // GetAllByPartner, builds index on models.{dbTypeName}.Partner
         { "key": "Partner", "type": "set"}
       ],

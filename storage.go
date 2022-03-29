@@ -32,17 +32,21 @@ type BucketSpec struct {
 }
 
 type SecondaryIndex struct {
-	Key  string
-	Keys []IndexComponent
+	Key  string           // sugar for using Keys[{oneKey}]
+	Keys []IndexComponent // an ordered list of index keys for a composite index
 
 	Name, Type, CacheKey string
-	Optional             bool
+	Optional             bool // is the whole index optional?
 }
 
 type IndexComponent struct {
 	Key      string
 	Param    string
 	Optional bool
+
+	// Exclude this component when generating the composite index?
+	// Very useful when checking for an optional parent.
+	ExclFromIndex bool
 }
 
 func ReadStorageSpec(filename string) ServiceStorageSpec {
