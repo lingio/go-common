@@ -42,24 +42,30 @@ func NewObjectStore(mc *minio.Client, bucketName string, config ObjectStoreConfi
 }
 
 // GetObject attempts to get metadata and read data from the specified file.
-func (os ObjectStore) GetObject(file string) ([]byte, ObjectInfo, *Error) {
+func (os ObjectStore) GetObject(file string) (_ []byte, _ ObjectInfo, lerr *Error) {
 	object, err := os.mc.GetObject(context.Background(), os.bucketName, file, minio.GetObjectOptions{
 		// TODO: add support for VersionID ?
 	})
 	if err != nil {
-		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file)
+		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file).Msg("get object")
 	}
+
+	defer func() {
+		if err := object.Close(); err != nil && lerr == nil {
+			lerr = objectStoreError(err, os.bucketName, file).Msg("close object")
+		} else if err != nil {
+			// zl.Err()
+		}
+	}()
+
 	// object.Read/Stat calls are mutex-guarded so there is no parallelism speedup
 	data, err := ioutil.ReadAll(object)
 	if err != nil {
-		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file)
-	}
-	if err := object.Close(); err != nil {
-		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file)
+		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file).Msg("read all")
 	}
 	stat, err := object.Stat()
 	if err != nil {
-		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file)
+		return nil, ObjectInfo{}, objectStoreError(err, os.bucketName, file).Msg("stat")
 	}
 
 	return data, objectInfoFromMinio(stat), nil
