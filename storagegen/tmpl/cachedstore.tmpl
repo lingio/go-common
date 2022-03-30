@@ -386,6 +386,12 @@ func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 					break main_control_loop
 				}
 				objectsLoaded++
+				if objectsLoaded % 10_000 == 0 {
+					zl.Info().Str("component", "{{$storeName}}").
+						Int("objectsLoaded", objectsLoaded).
+						Msg("initializing cache")
+
+				}
 			}
 		}
 		ticker.Stop()
