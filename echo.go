@@ -23,7 +23,26 @@ type ErrorStruct struct {
 	Message string `json:"message"`
 }
 
-func NewEchoServerWithLingioStdConfig(swagger *openapi3.Swagger) *echo.Echo {
+type EchoConfig struct {
+	BodyLimit echo.MiddlewareFunc
+}
+
+var DefaultEchoConfig = EchoConfig{
+	BodyLimit: echomiddleware.BodyLimit("1M"),
+}
+
+func combineSkippers(skippers ...echomiddleware.Skipper) echomiddleware.Skipper {
+	return func(ctx echo.Context) bool {
+		for _, skipper := range skippers {
+			if skipper(ctx) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func NewEchoServerWithConfig(swagger *openapi3.Swagger, config EchoConfig) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 
@@ -32,10 +51,13 @@ func NewEchoServerWithLingioStdConfig(swagger *openapi3.Swagger) *echo.Echo {
 	skipOnMetricRequest := func(ctx echo.Context) bool {
 		return ctx.Path() == p.MetricsPath || strings.HasPrefix(ctx.Path(), "/ops")
 	}
+	skipOpsRequest := func(ctx echo.Context) bool {
+		return strings.HasPrefix(ctx.Path(), "/ops")
+	}
 
 	// Set up a basic Echo router and its middlewares
-	e.Use(echomiddleware.Logger())        // log all requests
-	e.Use(echomiddleware.BodyLimit("1M")) // limit request body size
+	e.Use(echomiddleware.Logger()) // log all requests
+	e.Use(config.BodyLimit)        // limit request body size
 	e.Use(echomiddleware.CORS())
 	e.Use(echomiddleware.GzipWithConfig(echomiddleware.GzipConfig{
 		Skipper: skipOnMetricRequest,
@@ -46,7 +68,7 @@ func NewEchoServerWithLingioStdConfig(swagger *openapi3.Swagger) *echo.Echo {
 	// Set up request validation
 	options := &middleware.Options{
 		Options: *openapi3filter.DefaultOptions,
-		Skipper: skipOnMetricRequest,
+		Skipper: combineSkippers(skipOnMetricRequest, skipOpsRequest),
 	}
 	options.Options.AuthenticationFunc = func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 		return nil
@@ -54,6 +76,10 @@ func NewEchoServerWithLingioStdConfig(swagger *openapi3.Swagger) *echo.Echo {
 	e.Use(middleware.OapiRequestValidatorWithOptions(swagger, options)) // check all requests against the OpenAPI schema
 
 	return e
+}
+
+func NewEchoServer(swagger *openapi3.Swagger) *echo.Echo {
+	return NewEchoServerWithConfig(swagger, DefaultEchoConfig)
 }
 
 type GracefulServer interface {
