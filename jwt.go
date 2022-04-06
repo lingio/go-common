@@ -31,6 +31,13 @@ func GetRole(strToken string, publicKey *rsa.PublicKey) (string, *Error) {
 		return "", NewError(http.StatusInternalServerError).Msg("failed to get claims from token")
 	}
 	role := claims["role"].(string)
+
+	// Translate from old roles to new ones
+	if role == "manager" {
+		role = "coach"
+	} else if role == "hr" {
+		role = "gm" 
+	}
 	return role, nil
 }
 
