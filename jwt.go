@@ -36,7 +36,7 @@ func GetRole(strToken string, publicKey *rsa.PublicKey) (string, *Error) {
 	if role == "manager" {
 		role = "coach"
 	} else if role == "hr" {
-		role = "gm" 
+		role = "gm"
 	}
 	return role, nil
 }
@@ -90,6 +90,14 @@ func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, user
 	// Check that user has one of the roles defined in security scope (if it's not empty)
 	if len(scopes) > 0 && scopes[0] != "" {
 		role := claims["role"]
+
+		// Translate from old roles to new ones
+		if role == "manager" {
+			role = "coach"
+		} else if role == "hr" {
+			role = "gm"
+		}
+		
 		if role == nil {
 			return NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("user has no role defined in token")
 		}
