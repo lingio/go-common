@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,9 +25,6 @@ type dummyStore struct {
 	encoder *json.Encoder
 }
 
-var noV2 bool
-var v2header = [...]byte{'v', 2, '/'}
-
 //
 // Usage:
 //
@@ -38,7 +34,7 @@ func main() {
 	log.Default().SetPrefix("[encrypt]")
 
 	decrypt := flag.Bool("decrypt", false, "decrypt stdin (instead of encrypt)")
-	flag.BoolVar(&noV2, "nov2", false, "if set, panics when trying to decrypt v2 crypto data")
+	cryptostore := flag.String("crypto", "", "crypto store to pass through: v1 (insecure) or v2 (secure)")
 	serviceKey := os.Getenv("ENCRYPTION_KEY")
 	flag.Parse()
 
@@ -51,7 +47,15 @@ func main() {
 		encoder: json.NewEncoder(os.Stdout),
 	}
 
-	store, err := common.NewEncryptedStore(ds, serviceKey)
+	var err error
+	var store common.LingioStore
+	if *cryptostore == "v1" {
+		store, err = common.NewInsecureEncryptedStore(ds, serviceKey)
+	} else if *cryptostore == "v2" {
+		store, err = common.NewEncryptedStore(ds, serviceKey)
+	} else {
+		trap(fmt.Errorf("unknown crypto store: %q - use either v1 (insecure) or v2 (secure)", *cryptostore))
+	}
 	trap(err)
 
 	if *decrypt {
@@ -90,14 +94,6 @@ func (ds dummyStore) GetObject(filename string) ([]byte, common.ObjectInfo, *com
 	var obj Object
 	if err := ds.decoder.Decode(&obj); err != nil {
 		return nil, common.ObjectInfo{}, common.NewErrorE(http.StatusInternalServerError, err)
-	}
-	if noV2 {
-		if bytes.HasPrefix([]byte(obj.Key), v2header[:]) {
-			panic(fmt.Errorf("object key %q starts with v2 magic header: %s", obj.Key, v2header))
-		}
-		if bytes.HasPrefix(obj.Data, v2header[:]) {
-			panic(fmt.Errorf("object data %v starts with v2 magic header: %s", obj.Data, v2header))
-		}
 	}
 	return obj.Data, obj.ObjectInfo, nil
 }
