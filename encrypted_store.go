@@ -138,7 +138,7 @@ func newV1Crypto(key []byte) (cryptoModule, error) {
 
 func (c v1Crypto) encryptFilename(plaintext string) string {
 	ciphertext := []byte(plaintext)
-	c.cipher.Encrypt(nil, ciphertext)
+	c.cipher.Encrypt(ciphertext, ciphertext)
 	return base32.StdEncoding.EncodeToString(ciphertext)
 }
 
