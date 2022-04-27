@@ -8,6 +8,7 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net/http"
 )
@@ -182,7 +183,11 @@ func newV2Crypto(key []byte) (cryptoModule, error) {
 
 func (c v2Crypto) encryptFilename(plaintext string) string {
 	key := []byte(plaintext)
-	nonce := key[0:c.aesgcm.NonceSize()]
+
+	// deterministic nonce so we can find encoded ciphertext in object store in GetObject
+	nonce := fnv.New128a().Sum(key) // fnv128a has decent avalance properties and is fast
+	nonce = nonce[:c.aesgcm.NonceSize()]
+
 	ciphertext := c.encryptData(nonce, key)
 	return base32.StdEncoding.EncodeToString(ciphertext)
 }
