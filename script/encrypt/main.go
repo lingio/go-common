@@ -84,7 +84,11 @@ func main() {
 }
 
 func trap(err error) {
-	if err != nil {
+	if lerr, ok := err.(*common.Error); ok {
+		if lerr != nil {
+			log.Fatalln(lerr)
+		}
+	} else if err != nil {
 		log.Fatalln(err)
 	}
 }
