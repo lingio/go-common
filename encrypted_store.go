@@ -13,8 +13,6 @@ import (
 	"net/http"
 )
 
-var ErrDecrypt = errors.New("encrypted store: decryption error")
-
 // EncryptedStore
 type EncryptedStore struct {
 	backend LingioStore
@@ -65,8 +63,6 @@ func NewInsecureEncryptedStore(backend LingioStore, cipherKey string) (*Encrypte
 }
 
 func (es *EncryptedStore) GetObject(file string) ([]byte, ObjectInfo, *Error) {
-	// We don't know which crypto gen to use to map plaintext filename to ciphertext filename
-	// so we can only do trail and error.
 	data, info, lerr := es.backend.GetObject(es.crypto.encryptFilename(file))
 	if lerr != nil {
 		return nil, ObjectInfo{}, lerr
