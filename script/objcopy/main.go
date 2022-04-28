@@ -49,6 +49,7 @@ func main() {
 	bucket := flag.String("bucket", "", "bucket to read from or write to")
 	renameFmt := flag.String("rename", "{KEY}{EXT}", "rename object using key and parsed extension")
 	nobjsPerSec := flag.Int("obj-per-sec", 1000, "rate limit object writes per second")
+	keysOnly := flag.Bool("keys-only", false, "**from** only: only read keys from bucket")
 	minioSecret := os.Getenv("MINIO_SECRET")
 	flag.Parse()
 
@@ -97,7 +98,7 @@ func main() {
 		// Read from store and write json-encoding to stdout
 		var n int
 		encoder := json.NewEncoder(os.Stdout)
-		for obj := range readAllFromStore(store) {
+		for obj := range readAllFromStore(store, *keysOnly) {
 			encoder.Encode(obj)
 			n++
 		}
@@ -127,7 +128,7 @@ func main() {
 	}
 }
 
-func readAllFromStore(store *common.ObjectStore) <-chan Object {
+func readAllFromStore(store *common.ObjectStore, keysOnly bool) <-chan Object {
 	const workers = 10
 	listing := store.ListObjects(context.Background())
 	objchan := make(chan Object, workers*2)
@@ -137,6 +138,13 @@ func readAllFromStore(store *common.ObjectStore) <-chan Object {
 		go func(workerId int) {
 			defer close(errchan[workerId])
 			for req := range listing {
+				if keysOnly {
+					objchan <- Object{
+						ObjectInfo: req,
+						Data:       nil,
+					}
+				}
+
 				data, info, err := store.GetObject(req.Key)
 				if err != nil {
 					errchan[workerId] <- fmt.Errorf("read: %w", err)

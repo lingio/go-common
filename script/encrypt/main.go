@@ -34,6 +34,7 @@ func main() {
 	log.Default().SetPrefix("[encrypt]")
 
 	decrypt := flag.Bool("decrypt", false, "decrypt stdin (instead of encrypt)")
+	cryptostore := flag.String("crypto", "", "crypto store to pass through: v1 (insecure) or v2 (secure)")
 	serviceKey := os.Getenv("ENCRYPTION_KEY")
 	flag.Parse()
 
@@ -46,7 +47,15 @@ func main() {
 		encoder: json.NewEncoder(os.Stdout),
 	}
 
-	store, err := common.NewEncryptedStore(ds, serviceKey)
+	var err error
+	var store common.LingioStore
+	if *cryptostore == "v1" {
+		store, err = common.NewInsecureEncryptedStore(ds, serviceKey)
+	} else if *cryptostore == "v2" {
+		store, err = common.NewEncryptedStore(ds, serviceKey)
+	} else {
+		trap(fmt.Errorf("unknown crypto store: %q - use either v1 (insecure) or v2 (secure)", *cryptostore))
+	}
 	trap(err)
 
 	if *decrypt {
@@ -75,7 +84,11 @@ func main() {
 }
 
 func trap(err error) {
-	if err != nil {
+	if lerr, ok := err.(*common.Error); ok {
+		if lerr != nil {
+			log.Fatalln(lerr)
+		}
+	} else if err != nil {
 		log.Fatalln(err)
 	}
 }
