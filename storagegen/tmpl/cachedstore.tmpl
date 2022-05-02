@@ -342,6 +342,11 @@ func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 							return
 						}
 
+						if info.Key != {{$filename}}(entity.{{.IdName}}) {
+							zl.Warn().Str("key", info.Key).Msg("skipping object with mismatched filename")
+							continue
+						}
+
 						workerout <- {{.TypeName}}CacheIngest{
 							ObjectInfo: info,
 							Entity:     entity,
