@@ -42,7 +42,7 @@ func combineSkippers(skippers ...echomiddleware.Skipper) echomiddleware.Skipper 
 	}
 }
 
-func NewEchoServerWithConfig(swagger *openapi3.Swagger, config EchoConfig) *echo.Echo {
+func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 
@@ -78,7 +78,7 @@ func NewEchoServerWithConfig(swagger *openapi3.Swagger, config EchoConfig) *echo
 	return e
 }
 
-func NewEchoServer(swagger *openapi3.Swagger) *echo.Echo {
+func NewEchoServer(swagger *openapi3.T) *echo.Echo {
 	return NewEchoServerWithConfig(swagger, DefaultEchoConfig)
 }
 
