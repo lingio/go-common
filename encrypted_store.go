@@ -62,27 +62,27 @@ func NewInsecureEncryptedStore(backend LingioStore, cipherKey string) (*Encrypte
 	}, nil
 }
 
-func (es *EncryptedStore) GetObject(file string) ([]byte, ObjectInfo, *Error) {
-	data, info, lerr := es.backend.GetObject(es.crypto.encryptFilename(file))
-	if lerr != nil {
-		return nil, ObjectInfo{}, lerr
+func (es *EncryptedStore) GetObject(ctx context.Context, file string) (plaintext []byte, info ObjectInfo, err error) {
+	data, info, err := es.backend.GetObject(ctx, es.crypto.encryptFilename(file))
+	if err != nil {
+		return nil, ObjectInfo{}, err
 	}
 
-	var err error
-	plaintext := es.crypto.decryptData(data)
+	plaintext = es.crypto.decryptData(data)
 	info.Key, err = es.crypto.decryptFilename(info.Key)
 	if err != nil {
-		return nil, ObjectInfo{}, NewErrorE(http.StatusInternalServerError, err)
+		return nil, ObjectInfo{}, NewErrorE(http.StatusInternalServerError, err).Msg("Could not decrypt filename.")
 	}
 
 	return plaintext, info, nil
 }
 
-func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byte) (ObjectInfo, *Error) {
+func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byte) (info ObjectInfo, err error) {
+
 	encdata := es.crypto.encryptData(nil, data) // generate new nonce for every write
 	encfile := es.crypto.encryptFilename(file)
 
-	info, err := es.backend.PutObject(ctx, encfile, encdata)
+	info, err = es.backend.PutObject(ctx, encfile, encdata)
 	if err != nil {
 		return ObjectInfo{}, err
 	}
@@ -90,7 +90,7 @@ func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byt
 	return info, nil
 }
 
-func (es EncryptedStore) DeleteObject(ctx context.Context, file string) *Error {
+func (es EncryptedStore) DeleteObject(ctx context.Context, file string) (err error) {
 	return es.backend.DeleteObject(ctx, es.crypto.encryptFilename(file))
 }
 
