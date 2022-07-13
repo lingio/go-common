@@ -20,6 +20,7 @@ import (
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog"
 	zl "github.com/rs/zerolog/log"
 )
 
@@ -60,13 +61,49 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 	}
 
 	// Set up a basic Echo router and its middlewares
-	e.Use(echomiddleware.Logger()) // log all requests
-	e.Use(config.BodyLimit)        // limit request body size
 	e.Use(otelecho.Middleware(
 		swagger.Info.Title,
 		otelecho.WithSkipper(skipOnMetricRequest),
 		otelecho.WithTracerProvider(otel.GetTracerProvider()),
 	))
+	logger := zerolog.New(os.Stdout)
+	e.Use(echomiddleware.RequestLoggerWithConfig(echomiddleware.RequestLoggerConfig{
+		LogURI:           true,
+		LogStatus:        true,
+		LogLatency:       true,
+		LogRemoteIP:      true,
+		LogHost:          true,
+		LogError:         true,
+		LogMethod:        true,
+		LogProtocol:      true,
+		LogResponseSize:  true,
+		LogRequestID:     true,
+		LogContentLength: true,
+		LogUserAgent:     true,
+		LogValuesFunc: func(c echo.Context, v echomiddleware.RequestLoggerValues) error {
+			span := trace.SpanFromContext(c.Request().Context())
+			logger.Info().
+				Time("time", v.StartTime).
+				Str("id", v.RequestID).
+				Str("host", v.Host).
+				Str("remote_ip", v.RemoteIP).
+				Str("user_agent", v.UserAgent).
+				Str("protocol", v.Protocol).
+				Str("method", v.Method).
+				Str("uri", v.URI).
+				Int("status", v.Status).
+				Int64("latency_us", v.Latency.Microseconds()).
+				Str("latency_human", v.Latency.String()).
+				Str("bytes_in", v.ContentLength).
+				Int64("bytes_out", v.ResponseSize).
+				Str("trace_id", span.SpanContext().TraceID().String()).
+				Err(v.Error).
+				Msg("request")
+
+			return nil
+		},
+	}))
+	e.Use(config.BodyLimit) // limit request body size
 	e.Use(echomiddleware.CORS())
 	e.Use(echomiddleware.GzipWithConfig(echomiddleware.GzipConfig{
 		Skipper: skipOnMetricRequest,
