@@ -9,13 +9,13 @@ import (
 
 func TestAuditLog(t *testing.T) {
 	var b bytes.Buffer
-	prevAuditLog := auditLog
-	auditLog = auditLog.Output(&b)
+	prevAuditLog := auditLogger
+	auditLogger = auditLogger.Output(&b)
 	ctx := WithAction(context.TODO(), "CREATE")
 	ctx = WithObject(ctx, "OBJECT")
 	ctx = WithBucket(ctx, "BUCKET")
 	LogAuditEvent(ctx)
-	auditLog = prevAuditLog
+	auditLogger = prevAuditLog
 
 	logmsg := make(map[string]interface{})
 	if err := json.Unmarshal(b.Bytes(), &logmsg); err != nil {
