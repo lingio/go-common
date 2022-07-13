@@ -34,7 +34,8 @@ func auditLogFields() []auditLogKeyType {
 }
 
 func FromEcho(e echo.Context) context.Context {
-	ctx := context.TODO()
+	// use the original context as parent so we support echo middleware
+	ctx := e.Request().Context()
 
 	// TODO(Axel): Generate request ID
 	// ctx = context.WithValue(ctx, requestKey, snowflake.Generate())
