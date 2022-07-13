@@ -7,12 +7,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 
 	"github.com/minio/minio-go/v7"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ErrBucketDoesNotExist is a proxy for detecting this particular error case in calling code.
@@ -48,6 +49,12 @@ func NewObjectStore(mc *minio.Client, bucketName string, config ObjectStoreConfi
 
 // GetObject attempts to get metadata and read data from the specified file.
 func (os ObjectStore) GetObject(ctx context.Context, file string) (_ []byte, _ ObjectInfo, lerr error) {
+	ctx, span := tracer.Start(ctx, "object_store.GetObject", trace.WithAttributes(
+		attribute.String("file", file),
+	))
+	defer span.End()
+	defer span.RecordError(lerr)
+
 	object, err := os.mc.GetObject(context.Background(), os.bucketName, file, minio.GetObjectOptions{
 		// TODO: add support for VersionID ?
 	})
@@ -58,6 +65,9 @@ func (os ObjectStore) GetObject(ctx context.Context, file string) (_ []byte, _ O
 	defer func() {
 		if err := object.Close(); err != nil && lerr == nil {
 			lerr = objectError(err, os.bucketName, file, "Could not close object")
+		} else if err != nil && lerr != nil {
+			// record this error, but dont overwrite the existing lerr
+			span.RecordError(err)
 		}
 	}()
 
@@ -76,6 +86,11 @@ func (os ObjectStore) GetObject(ctx context.Context, file string) (_ []byte, _ O
 
 // PutObject uploads the object with pre-configured content type and content disposition.
 func (os ObjectStore) PutObject(ctx context.Context, file string, data []byte) (_ ObjectInfo, diderr error) {
+	ctx, span := tracer.Start(ctx, "object_store.PutObject", trace.WithAttributes(
+		attribute.String("file", file),
+	))
+	defer span.End()
+	defer span.RecordError(diderr)
 
 	defer logObjectStoreAuditEvent(ctx, "Put", os.bucketName, file, diderr)
 	info, err := os.mc.PutObject(ctx, os.bucketName, file, bytes.NewBuffer(data), int64(len(data)), minio.PutObjectOptions{
@@ -95,6 +110,15 @@ func (os ObjectStore) PutObject(ctx context.Context, file string, data []byte) (
 
 // DeleteObject will attempt to remove the requested file/object.
 func (os ObjectStore) DeleteObject(ctx context.Context, file string) (diderr error) {
+	ctx, span := tracer.Start(ctx, "object_store.DeleteObject", trace.WithAttributes(
+		attribute.String("file", file),
+	))
+	defer span.End()
+	defer func() {
+		if diderr != nil {
+			span.RecordError(diderr)
+		}
+	}()
 	defer logObjectStoreAuditEvent(ctx, "Delete", os.bucketName, file, diderr)
 	err := os.mc.RemoveObject(ctx, os.bucketName, file, minio.RemoveObjectOptions{
 		// TODO: add support for VersionID ?
@@ -107,6 +131,7 @@ func (os ObjectStore) DeleteObject(ctx context.Context, file string) (diderr err
 
 // ListObjects performs a recursive object listing.
 func (os ObjectStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
+	ctx, span := tracer.Start(ctx, "object_store.ListObjects")
 	listing := os.mc.ListObjects(ctx, os.bucketName, minio.ListObjectsOptions{
 		Recursive: true,
 		// add support for WithVersions ?
@@ -114,6 +139,7 @@ func (os ObjectStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
 
 	objects := make(chan ObjectInfo, 10)
 	go func() {
+		defer span.End()
 		defer close(objects)
 		for objectInfo := range listing {
 			if objectInfo.Err == io.EOF {
