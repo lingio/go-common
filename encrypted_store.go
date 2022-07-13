@@ -11,6 +11,9 @@ import (
 	"hash/fnv"
 	"io"
 	"net/http"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // EncryptedStore
@@ -63,6 +66,12 @@ func NewInsecureEncryptedStore(backend LingioStore, cipherKey string) (*Encrypte
 }
 
 func (es *EncryptedStore) GetObject(ctx context.Context, file string) (plaintext []byte, info ObjectInfo, err error) {
+	ctx, span := tracer.Start(ctx, "encrypted_store.GetObject", trace.WithAttributes(
+		attribute.String("file", file),
+	))
+	defer span.End()
+	defer span.RecordError(err)
+
 	data, info, err := es.backend.GetObject(ctx, es.crypto.encryptFilename(file))
 	if err != nil {
 		return nil, ObjectInfo{}, err
@@ -78,6 +87,11 @@ func (es *EncryptedStore) GetObject(ctx context.Context, file string) (plaintext
 }
 
 func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byte) (info ObjectInfo, err error) {
+	ctx, span := tracer.Start(ctx, "encrypted_store.PutObject", trace.WithAttributes(
+		attribute.String("file", file),
+	))
+	defer span.End()
+	defer span.RecordError(err)
 
 	encdata := es.crypto.encryptData(nil, data) // generate new nonce for every write
 	encfile := es.crypto.encryptFilename(file)
@@ -91,14 +105,22 @@ func (es *EncryptedStore) PutObject(ctx context.Context, file string, data []byt
 }
 
 func (es EncryptedStore) DeleteObject(ctx context.Context, file string) (err error) {
+	ctx, span := tracer.Start(ctx, "encrypted_store.DeleteObject", trace.WithAttributes(
+		attribute.String("file", file),
+	))
+	defer span.End()
+	defer span.RecordError(err)
 	return es.backend.DeleteObject(ctx, es.crypto.encryptFilename(file))
 }
 
 // ListObjects will list all decryptable objects.
 func (es EncryptedStore) ListObjects(ctx context.Context) <-chan ObjectInfo {
+	ctx, span := tracer.Start(ctx, "encrypted_store.ListObjects")
+
 	listing := es.backend.ListObjects(ctx)
 	objects := make(chan ObjectInfo, 10)
 	go func() {
+		defer span.End()
 		defer close(objects)
 
 		for info := range listing {
