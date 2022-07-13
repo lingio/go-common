@@ -10,6 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -58,6 +62,11 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 	// Set up a basic Echo router and its middlewares
 	e.Use(echomiddleware.Logger()) // log all requests
 	e.Use(config.BodyLimit)        // limit request body size
+	e.Use(otelecho.Middleware(
+		swagger.Info.Title,
+		otelecho.WithSkipper(skipOnMetricRequest),
+		otelecho.WithTracerProvider(otel.GetTracerProvider()),
+	))
 	e.Use(echomiddleware.CORS())
 	e.Use(echomiddleware.GzipWithConfig(echomiddleware.GzipConfig{
 		Skipper: skipOnMetricRequest,
