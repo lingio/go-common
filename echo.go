@@ -12,6 +12,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
@@ -147,10 +148,21 @@ func ServeUntilSignal(e GracefulServer, addr string, signals ...os.Signal) {
 	<-quit
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	zl.Info().Msg("shutting down api server")
 	if err := e.Shutdown(ctx); err != nil && err != http.ErrServerClosed {
-		zl.Fatal().Str("error", err.Error()).Msg("fatal error shutting down api server")
+		zl.Warn().Err(err).Msg("error shutting down api server")
 	}
 
+	// Best effort cleanup on service shutdown.
+	if tp, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
+		zl.Info().Msg("flushing traces")
+		if err := tp.ForceFlush(ctx); err != nil {
+			zl.Warn().Err(err).Msg("error flusing trace provider")
+		}
+		if err := tp.Shutdown(ctx); err != nil {
+			zl.Warn().Err(err).Msg("error shuting down trace provider")
+		}
+	}
 }
 
 func Respond(ctx echo.Context, statusCode int, val interface{}, etag string) error {
