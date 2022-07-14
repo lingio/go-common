@@ -123,8 +123,8 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 				Int64("bytes_out", v.ResponseSize).
 				Str("trace_id", span.SpanContext().TraceID().String())
 
-			if lerr, ok := v.Error.(*Error); ok {
-				zle.Str("full_trace", lerr.FullTrace())
+			if v.Error != nil {
+				zle.Str("full_trace", FullErrorTrace(v.Error))
 			}
 
 			zle.Msg("request") // actually log it

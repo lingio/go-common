@@ -61,11 +61,11 @@ func NewErrorE(httpStatusCode int, err error) *Error {
 	}
 }
 
-func (e *Error) FullTrace() string {
-	var indent strings.Builder
+func FullErrorTrace(e error) string {
 	var str strings.Builder
-	var mapstr strings.Builder
+	var indent strings.Builder
 
+	var mapstr strings.Builder
 	dumpMap := func(m map[string]string, to *strings.Builder) {
 		mapstr.Reset()
 		to.WriteString("\n")
@@ -83,20 +83,30 @@ func (e *Error) FullTrace() string {
 		to.WriteString(mapstr.String())
 	}
 
-	dumpSummary := func(err *Error, to *strings.Builder) {
-		to.WriteString(err.Trace)
-		to.WriteString(" (")
-		to.WriteString(strconv.Itoa(err.HttpStatusCode))
-		to.WriteString("): \"")
-		to.WriteString(err.Message)
-		to.WriteString("\"")
+	dumpError := func(err error, to *strings.Builder) {
+		if lerr, ok := err.(*Error); ok {
+			to.WriteString(lerr.Trace)
+			to.WriteString(" (")
+			to.WriteString(strconv.Itoa(lerr.HttpStatusCode))
+			to.WriteString("): \"")
+			to.WriteString(lerr.Message)
+			to.WriteString("\"")
+			if len(lerr.Map) > 0 {
+				dumpMap(lerr.Map, to)
+			}
+		} else {
+			to.WriteString("error: ")
+			to.WriteString(err.Error())
+		}
+	}
+
+	if e == nil {
+		return ""
 	}
 
 	str.WriteString("> ")
-	dumpSummary(e, &str)
-	if len(e.Map) > 0 {
-		dumpMap(e.Map, &str)
-	}
+	dumpError(e, &str)
+	indent.WriteString("  ") // always indent child errors at least one step
 
 	var lasterr error
 	err := error(e)
@@ -115,16 +125,7 @@ func (e *Error) FullTrace() string {
 		str.WriteString(indent.String())
 		str.WriteString("\\ ")
 
-		if lerr, ok := err.(*Error); ok {
-			dumpSummary(lerr, &str)
-			if len(lerr.Map) > 0 {
-				dumpMap(lerr.Map, &str)
-			}
-		} else {
-			str.WriteString("error: ")
-			str.WriteString(err.Error())
-		}
-
+		dumpError(err, &str)
 	}
 	return str.String()
 }
