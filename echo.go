@@ -62,6 +62,32 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 	}
 
 	// Set up a basic Echo router and its middlewares
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		if lerr, ok := err.(*Error); ok {
+			err := lerr // shadowing param err
+
+			// best-effort attempt at finding the first parent with a message
+			// if we don't have an error message in the provided error.
+			for err.Message == "" {
+				le := err.Unwrap()
+				if le == nil {
+					break
+				}
+
+				if le, ok := le.(*Error); ok {
+					err = le
+				}
+			}
+
+			e.DefaultHTTPErrorHandler(&echo.HTTPError{
+				Code:     lerr.HttpStatusCode,
+				Message:  err.Message, // what we return to api caller
+				Internal: lerr.Unwrap(),
+			}, c)
+		} else {
+			e.DefaultHTTPErrorHandler(err, c)
+		}
+	}
 	e.Use(otelecho.Middleware(
 		swagger.Info.Title,
 		otelecho.WithSkipper(skipOnMetricRequest),
@@ -78,14 +104,12 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 		LogMethod:        true,
 		LogProtocol:      true,
 		LogResponseSize:  true,
-		LogRequestID:     true,
 		LogContentLength: true,
 		LogUserAgent:     true,
 		LogValuesFunc: func(c echo.Context, v echomiddleware.RequestLoggerValues) error {
 			span := trace.SpanFromContext(c.Request().Context())
-			logger.Info().
-				Time("time", v.StartTime).
-				Str("id", v.RequestID).
+			zle := logger.Err(v.Error) // log level info if v.Error is nil, otherwise error
+			zle.Time("time", v.StartTime).
 				Str("host", v.Host).
 				Str("remote_ip", v.RemoteIP).
 				Str("user_agent", v.UserAgent).
@@ -97,9 +121,13 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 				Str("latency_human", v.Latency.String()).
 				Str("bytes_in", v.ContentLength).
 				Int64("bytes_out", v.ResponseSize).
-				Str("trace_id", span.SpanContext().TraceID().String()).
-				Err(v.Error).
-				Msg("request")
+				Str("trace_id", span.SpanContext().TraceID().String())
+
+			if lerr, ok := v.Error.(*Error); ok {
+				zle.Str("full_trace", lerr.FullTrace())
+			}
+
+			zle.Msg("request") // actually log it
 
 			return nil
 		},
@@ -195,20 +223,21 @@ func RespondFile(ctx echo.Context, statusCode int, file []byte, fileName string,
 
 func RespondError(ctx echo.Context, le *Error) error {
 	// Log error
-	zle := zl.Warn()
-	if le.HttpStatusCode >= 500 {
-		zle = zl.Error().Err(le)
-	}
-	zle.Int("httpStatusCode", le.HttpStatusCode)
-	zle.Str("trace", le.Trace)
-	for k, v := range le.Map {
-		zle = zle.Str(k, v)
-	}
-	zle.Msg(le.Message)
+	// zle := zl.Warn()
+	// if le.HttpStatusCode >= 500 {
+	// 	zle = zl.Error().Err(le)
+	// }
+	// zle.Int("httpStatusCode", le.HttpStatusCode)
+	// zle.Str("trace", le.Trace)
+	// for k, v := range le.Map {
+	// 	zle = zle.Str(k, v)
+	// }
+	// zle.Msg(le.Message)
 
-	// Create and set error object on the Echo Context
-	e := ErrorStruct{
-		Message: le.Message,
-	}
-	return Respond(ctx, le.HttpStatusCode, e, "")
+	// // Create and set error object on the Echo Context
+	// e := ErrorStruct{
+	// 	Message: le.Message,
+	// }
+	// return Respond(ctx, le.HttpStatusCode, e, "")
+	return le
 }
