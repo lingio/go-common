@@ -47,7 +47,7 @@ func GenerateFromSpec(es ExtSpec, specFilename string, outdir string) {
 	for _, fs := range es.OpenOperations {
 		f, ok := funcMap[fs]
 		if !ok {
-			zl.Fatal().Str("operationID", "fs").Msg("operationID not found")
+			zl.Fatal().Str("operationID", fs).Msg("operationID not found")
 		}
 		if !f.TmplParams.TokenAuth && !f.TmplParams.ApiKeyAuth {
 			b = append(b, generate(fmt.Sprintf("tmpl/%s/%s%s.tmpl", "none", strings.ToLower(f.HttpMethod), Postfix(f)), f.TmplParams)...)
