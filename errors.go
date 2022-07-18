@@ -130,21 +130,29 @@ func FullErrorTrace(e error) string {
 	return str.String()
 }
 
+// Error constructs a string: message (code) [trace] { k:v }: parent_error
 func (e *Error) Error() string {
 	var str strings.Builder
-	for k, v := range e.Map {
-		str.WriteString(k)
-		str.WriteString(": ")
-		str.WriteString(v)
-		str.WriteString(". ")
-	}
-	str.WriteString("statusCode: ")
-	str.WriteString(strconv.Itoa(e.HttpStatusCode))
-	str.WriteString(". trace: ")
-	str.WriteString(e.Trace)
-	str.WriteString(". message: ")
 	str.WriteString(e.Message)
-	str.WriteString(".")
+	str.WriteString(" (")
+	str.WriteString(strconv.Itoa(e.HttpStatusCode))
+	str.WriteString(") [")
+	str.WriteString(e.Trace)
+	str.WriteString("]")
+	if len(e.Map) > 0 {
+		str.WriteString(" {")
+		for k, v := range e.Map {
+			str.WriteRune(' ')
+			str.WriteString(k)
+			str.WriteRune(':')
+			str.WriteString(v)
+		}
+		str.WriteString(" }")
+	}
+	if e.err != nil {
+		str.WriteString(": ")
+		str.WriteString(e.err.Error())
+	}
 	return str.String()
 }
 
