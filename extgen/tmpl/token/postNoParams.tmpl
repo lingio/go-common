@@ -1,5 +1,5 @@
 // POST {{.Path}}
-func (c *LingioClient) {{.FuncName}}(body {{.BodyType}}, token string) (*{{.RetObjType}}, *common.Error) {
+func (c *LingioClient) {{.FuncName}}(body {{.BodyType}}, token string) (*{{.RetObjType}}, error) {
 	var x {{.RetObjType}}
 	b, lerr := common.HttpPost(fmt.Sprintf("%s{{.PathTemplate}}", c.Server), body, token)
     {{template "parseJson.tmpl" -}}

@@ -1,5 +1,5 @@
 // Delete {{.Path}}
-func (c *LingioClient) {{.FuncName}}({{.Params}}, token string) (*{{.RetObjType}}, *common.Error) {
+func (c *LingioClient) {{.FuncName}}({{.Params}}, token string) (*{{.RetObjType}}, error) {
 	var x {{.RetObjType}}
     {{- if .QueryParams}}
 
