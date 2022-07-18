@@ -1,5 +1,5 @@
 // GET {{.Path}}
-func (c *LingioClient) {{.FuncName}}({{.Params}}) (*{{.RetObjType}}, *common.Error) {
+func (c *LingioClient) {{.FuncName}}({{.Params}}) (*{{.RetObjType}}, error) {
 	var x {{.RetObjType}}
     {{- if .QueryParams}}
 
