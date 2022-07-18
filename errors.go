@@ -49,7 +49,12 @@ type Error struct {
 }
 
 func NewError(httpStatusCode int) *Error {
-	return NewErrorE(httpStatusCode, nil)
+	return &Error{
+		HttpStatusCode: httpStatusCode,
+		Trace:          getErrorTrace(1),
+		Map:            make(map[string]string, 0),
+		err:            nil,
+	}
 }
 
 func NewErrorE(httpStatusCode int, err error) *Error {
