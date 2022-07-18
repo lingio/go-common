@@ -204,5 +204,5 @@ func wrapMinioError(err error) *Error {
 		}
 		return lerr.Str("code", merr.Code)
 	}
-	return NewError(http.StatusInternalServerError)
+	return NewErrorE(http.StatusInternalServerError, err)
 }
