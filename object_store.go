@@ -156,7 +156,7 @@ func (os ObjectStore) StoreName() string {
 	return os.bucketName
 }
 
-func logObjectStoreAuditEvent(ctx context.Context, bucket, action, object string, err error) {
+func logObjectStoreAuditEvent(ctx context.Context, action, bucket, object string, err error) {
 	ctx = WithBucket(ctx, bucket)
 	ctx = WithAction(ctx, action)
 	ctx = WithObject(ctx, object)
