@@ -194,9 +194,11 @@ func wrapMinioError(err error) *Error {
 		var lerr *Error
 		switch merr.Code {
 		case "NoSuchBucket":
-			lerr = NewErrorE(http.StatusNotFound, ErrBucketDoesNotExist)
+			lerr = NewErrorE(http.StatusNotFound, ErrBucketDoesNotExist).
+				Str("minio", err.Error())
 		case "NoSuchKey":
-			lerr = NewErrorE(http.StatusNotFound, ErrObjectNotFound)
+			lerr = NewErrorE(http.StatusNotFound, ErrObjectNotFound).
+				Str("minio", err.Error())
 		default:
 			lerr = NewErrorE(merr.StatusCode, err)
 		}
