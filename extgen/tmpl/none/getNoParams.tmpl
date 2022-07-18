@@ -1,7 +1,7 @@
 // GET {{.Path}}
-func (c *LingioClient) {{.FuncName}}() (*{{.RetObjType}}, error) {
+func (c *LingioClient) {{.FuncName}}(ctx context.Context) (*{{.RetObjType}}, error) {
 	var x {{.RetObjType}}
-	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}", c.Server), "")
+	b, lerr := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server), "")
     {{template "parseJson.tmpl" -}}
 }
 
