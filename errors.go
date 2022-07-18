@@ -109,7 +109,7 @@ func FullErrorTrace(e error) string {
 	indent.WriteString("  ") // always indent child errors at least one step
 
 	var lasterr error
-	err := error(e)
+	err := e
 	for {
 		lasterr = err
 		err = errors.Unwrap(err)
@@ -117,7 +117,7 @@ func FullErrorTrace(e error) string {
 			break
 		}
 
-		if !errors.Is(err, lasterr) {
+		if !errors.Is(err, lasterr) && lasterr != e {
 			indent.WriteString("  ")
 		}
 
