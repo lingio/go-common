@@ -70,22 +70,17 @@ func FullErrorTrace(e error) string {
 	var str strings.Builder
 	var indent strings.Builder
 
-	var mapstr strings.Builder
 	dumpMap := func(m map[string]string, to *strings.Builder) {
-		mapstr.Reset()
 		to.WriteString("\n")
 		to.WriteString(indent.String())
 		to.WriteString("  ")
-		to.WriteString("| [map] ")
+		to.WriteString("| [map]")
 		for k, v := range m {
-			if mapstr.Len() > 0 {
-				mapstr.WriteRune(' ')
-			}
-			mapstr.WriteString(k)
-			mapstr.WriteString(":")
-			mapstr.WriteString(v)
+			to.WriteRune(' ')
+			to.WriteString(k)
+			to.WriteString(":")
+			to.WriteString(v)
 		}
-		to.WriteString(mapstr.String())
 	}
 
 	dumpError := func(err error, to *strings.Builder) {
