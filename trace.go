@@ -2,6 +2,8 @@ package common
 
 import (
 	"context"
+	"fmt"
+	"runtime/debug"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -13,10 +15,18 @@ import (
 
 var tracer = otel.Tracer("lingio.com/go-common")
 
-func InitServiceTraceProvider(serviceName, tempoHost string) error {
-	client, err := otlptracehttp.New(
-		context.Background(),
-		otlptracehttp.WithInsecure(),
+func InitMonitoring(serviceName string, cfg MonitorConfig) error {
+	env := ParseEnv()
+
+	if err := InitServiceTraceProvider(serviceName, env, cfg.TempoHost); err != nil {
+		return fmt.Errorf("init trace provider: %w", err)
+	}
+
+	return nil
+}
+
+func InitServiceTraceProvider(serviceName string, env Environment, tempoHost string) error {
+	opts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpoint(tempoHost),
 		// NOTE (Axel): retry config subject to change depending on service load
 		otlptracehttp.WithRetry(otlptracehttp.RetryConfig{
@@ -25,7 +35,14 @@ func InitServiceTraceProvider(serviceName, tempoHost string) error {
 			MaxInterval:     5 * time.Minute,
 			MaxElapsedTime:  30 * time.Minute, // if retry fails here, dump traces
 		}),
-	)
+	}
+
+	// specify environment-dependent options
+	if env == EnvDevelop {
+		opts = append(opts, otlptracehttp.WithInsecure())
+	}
+
+	client, err := otlptracehttp.New(context.Background(), opts...)
 	if err != nil {
 		return err
 	}
@@ -36,8 +53,21 @@ func InitServiceTraceProvider(serviceName, tempoHost string) error {
 		sdktrace.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String(serviceName),
+			semconv.ServiceVersionKey.String(GetBuildCommitHash()),
+			semconv.DeploymentEnvironmentKey.String(string(env)),
 		)),
 	)
 	otel.SetTracerProvider(tp) // set as global trace provider
 	return nil
+}
+
+func GetBuildCommitHash() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, kv := range info.Settings {
+			if kv.Key == "vcs.revision" {
+				return kv.Value
+			}
+		}
+	}
+	return "unknown revision"
 }
