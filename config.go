@@ -14,3 +14,7 @@ type RedisConfig struct {
 	MasterName string // sentinel master
 	ServiceDNS string // lookup sentinel servers on this domain name
 }
+
+type MonitorConfig struct {
+	TempoHost string
+}
