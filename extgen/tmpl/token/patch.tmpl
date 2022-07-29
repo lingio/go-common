@@ -1,0 +1,9 @@
+// PATCH {{.Path}}
+func (c *LingioClient) {{.FuncName}}({{.Params}}, body {{.BodyType}}, token string) *common.Error {
+	_, lerr := common.HttpPatch(fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), body, token)
+	if lerr != nil {
+		return lerr
+	}
+	return nil
+}
+
