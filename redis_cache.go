@@ -80,10 +80,18 @@ func SetupRedisClient(cfg RedisConfig) (*redis.Client, error) {
 		for _, srv := range srvs {
 			sentinelAddrs = append(sentinelAddrs, fmt.Sprintf("%s:%d", srv.Target, srv.Port))
 		}
-		return redis.NewFailoverClient(&redis.FailoverOptions{
+
+		failOverOptions := &redis.FailoverOptions{
 			MasterName:    cfg.MasterName,
 			SentinelAddrs: sentinelAddrs,
-		}), nil
+		}
+
+		if cfg.SentinelPassword != nil || cfg.MasterPassword != nil {
+			failOverOptions.SentinelPassword = *cfg.SentinelPassword
+			failOverOptions.Password = *cfg.MasterPassword
+		}
+
+		return redis.NewFailoverClient(failOverOptions), nil
 	}
 
 	if cfg.Addr != "" {
