@@ -10,7 +10,9 @@ type MinioConfig struct {
 // RedisConfig describes connectivity options for setting up a redis client
 // using the included SetupRedisClient func in this pkg.
 type RedisConfig struct {
-	Addr       string // for testing locally using one redis server
-	MasterName string // sentinel master
-	ServiceDNS string // lookup sentinel servers on this domain name
+	Addr             string // for testing locally using one redis server
+	MasterName       string // sentinel master
+	ServiceDNS       string // lookup sentinel servers on this domain name
+	SentinelPassword *string
+	MasterPassword   *string
 }
