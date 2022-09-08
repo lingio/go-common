@@ -70,7 +70,7 @@ func (s *{{$storeName}}) StoreName() string {
 //=============================================================================
 
 // Create attempts to store the provided object in store.
-func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, *common.Error) {
+func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, error) {
 	// check that the object doesn't exist
 	o, _, err := s.Get()
 	if err != nil && err.HttpStatusCode != http.StatusNotFound {
@@ -89,7 +89,7 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 
 
 // Get attempts to load the singleton from the store.
-func (s *{{$storeName}}) Get() (*models.{{.DbTypeName}}, string, *common.Error) {
+func (s *{{$storeName}}) Get() (*models.{{.DbTypeName}}, string, error) {
 	data, info, lerr := s.backend.GetObject({{$filename}}.filename())
 	if lerr != nil {
 		return nil, "", lerr.Msg("failed to get from minio")
@@ -103,12 +103,12 @@ func (s *{{$storeName}}) Get() (*models.{{.DbTypeName}}, string, *common.Error) 
 }
 
 // Put updates or creates the object in both cache and backing store.
-func (s *{{$storeName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
+func (s *{{$storeName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}) error {
 	return s.put(ctx, obj)
 }
 
 // put does the heavy lifting for both Put and Create methods.
-func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
+func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) error {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
@@ -121,7 +121,7 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *c
 }
 
 // Delete
-func (s *{{$storeName}}) Delete(ctx context.Context) *common.Error {
+func (s *{{$storeName}}) Delete(ctx context.Context) error {
 	if err := s.backend.DeleteObject(ctx, {{$filename}}.filename()); err != nil {
 		return err.Msg("failed to delete object in minio")
 	}
@@ -134,12 +134,12 @@ func (s *{{$storeName}}) Delete(ctx context.Context) *common.Error {
 {{range .SecondaryIndexes -}}
 {{if eq .Type "unique"}}
 // GetBy{{.Name}} fetches a single {{$modelName}} by its {{.Key}}
-func (s *{{$storeName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, string, *common.Error) {
+func (s *{{$storeName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, string, error) {
 	panic("not yet implemented")
 }
 {{else if eq .Type "set"}}
 // GetAllBy{{.Name}} fetches all {{$modelName}}s by their {{.Key}}
-func (s *{{$storeName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, *common.Error) {
+func (s *{{$storeName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, error) {
 	panic("not yet implemented")
 }
 {{end -}}
