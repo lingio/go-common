@@ -51,6 +51,7 @@ func combineSkippers(skippers ...echomiddleware.Skipper) echomiddleware.Skipper 
 func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
+	e.HidePort = true
 
 	// Init Prometheus
 	p := prometheus.NewPrometheus("echo", nil)
@@ -93,7 +94,11 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 		otelecho.WithSkipper(skipOnMetricRequest),
 		otelecho.WithTracerProvider(otel.GetTracerProvider()),
 	))
-	logger := zerolog.New(os.Stdout)
+	logger := zerolog.New(os.Stderr)
+	// if os.Getenv("ENV") == "local-stage" {
+	// 	logger = logger.Output(zerolog.ConsoleWriter{Out: os.Stdout})
+	// 	zl.Logger = logger
+	// }
 	e.Use(echomiddleware.RequestLoggerWithConfig(echomiddleware.RequestLoggerConfig{
 		LogURI:           true,
 		LogStatus:        true,
@@ -165,6 +170,8 @@ type GracefulServer interface {
 var DefaultServeSignals = []os.Signal{os.Interrupt, syscall.SIGTERM}
 
 func ServeUntilSignal(e GracefulServer, addr string, signals ...os.Signal) {
+	zl.Info().Str("addr", addr).Msg("starting api server")
+
 	go func() {
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
 			zl.Fatal().Str("error", err.Error()).Msg("fatal error serving api")
