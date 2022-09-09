@@ -200,6 +200,17 @@ func ServeUntilSignal(e GracefulServer, addr string, signals ...os.Signal) {
 	}
 }
 
+func ShutdownServices(services ...interface{ Shutdown(context.Context) error }) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	for _, svc := range services {
+		if err := svc.Shutdown(ctx); err != nil {
+			zl.Warn().Err(err).Msg("error shutting down internal service")
+		}
+	}
+}
+
 func Respond(ctx echo.Context, statusCode int, val interface{}, etag string) error {
 	if etag != "" {
 		ctx.Response().Header().Set("Cache-Control", "must-revalidate")
