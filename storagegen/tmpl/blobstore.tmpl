@@ -81,8 +81,8 @@ func (s *{{$storeName}}) Create(ctx context.Context, blob models.{{.DbTypeName}}
 
 
 // Get attempts to load an byte blob with the specified ID from the store.
-func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, error) {
-	data, info, err := s.backend.GetObject({{$filename}}(id))
+func (s *{{$storeName}}) Get(ctx context.Context, id string) (*models.{{.DbTypeName}}, string, error) {
+	data, info, err := s.backend.GetObject(ctx, {{$filename}}(id))
 	if err != nil {
 		return nil, "", err
 	}
