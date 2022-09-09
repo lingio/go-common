@@ -29,6 +29,7 @@ func InitMonitoring(serviceName string, cfg MonitorConfig) error {
 func InitServiceTraceProvider(serviceName string, env Environment, tempoHost string) error {
 	opts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpoint(tempoHost),
+		otlptracehttp.WithInsecure(),
 		// NOTE (Axel): retry config subject to change depending on service load
 		otlptracehttp.WithRetry(otlptracehttp.RetryConfig{
 			Enabled:         true,
