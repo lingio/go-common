@@ -16,6 +16,40 @@ import (
 
 var tracer = otel.Tracer("lingio.com/go-common")
 
+// traceconfig contains both tracesdk and otel options.
+// There is currently no nice way of deserializing json into otel/tracesdk data
+// structures, otherwise we could have specified this in service config instead.
+type traceconfig struct {
+	Retry   otlptracehttp.RetryConfig
+	Sampler sdktrace.Sampler
+}
+
+var traceConfigDevelop = traceconfig{
+	Sampler: sdktrace.AlwaysSample(),
+	Retry: otlptracehttp.RetryConfig{
+		Enabled:         true,
+		InitialInterval: 2 * time.Second,
+		MaxInterval:     5 * time.Second,
+		MaxElapsedTime:  10 * time.Second,
+	},
+}
+
+var traceConfigStaging = traceconfig{
+	Sampler: sdktrace.AlwaysSample(),
+	Retry: otlptracehttp.RetryConfig{
+		Enabled:         true,
+		InitialInterval: 2 * time.Second,
+		MaxInterval:     30 * time.Second,
+		MaxElapsedTime:  10 * time.Minute,
+	},
+}
+
+var traceConfigProduction = traceconfig{
+	// sample ~10% of traces, and try to keep distributed trace chains sampled
+	Sampler: sdktrace.ParentBased(sdktrace.TraceIDRatioBased(0.1)),
+	Retry:   traceConfigStaging.Retry,
+}
+
 func InitMonitoring(serviceName string, cfg MonitorConfig) error {
 	env := ParseEnv()
 
@@ -27,36 +61,34 @@ func InitMonitoring(serviceName string, cfg MonitorConfig) error {
 }
 
 func InitServiceTraceProvider(serviceName string, env Environment, tempoHost string) error {
-	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpoint(tempoHost),
-		otlptracehttp.WithInsecure(),
-		// NOTE (Axel): retry config subject to change depending on service load
-		otlptracehttp.WithRetry(otlptracehttp.RetryConfig{
-			Enabled:         true,
-			InitialInterval: 10 * time.Second,
-			MaxInterval:     5 * time.Minute,
-			MaxElapsedTime:  30 * time.Minute, // if retry fails here, dump traces
-		}),
-	}
+	var cfg traceconfig
 
 	// specify environment-dependent options
-	if env == EnvDevelop {
-		opts = append(opts, otlptracehttp.WithInsecure())
+	switch env {
+	case EnvDevelop:
+		cfg = traceConfigDevelop
+	case EnvStaging:
+		cfg = traceConfigStaging
+	case EnvProduction:
+		cfg = traceConfigProduction
 	}
 
-	client, err := otlptracehttp.New(context.Background(), opts...)
+	client, err := otlptracehttp.New(context.Background(),
+		otlptracehttp.WithEndpoint(tempoHost),
+		otlptracehttp.WithInsecure(),
+		otlptracehttp.WithRetry(cfg.Retry),
+	)
 	if err != nil {
 		return err
 	}
 
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithSampler(cfg.Sampler),
 		sdktrace.WithBatcher(client),
 		sdktrace.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String(serviceName),
 			semconv.ServiceVersionKey.String(GetBuildCommitHash()),
-			semconv.DeploymentEnvironmentKey.String(string(env)),
 		)),
 	)
 	otel.SetTracerProvider(tp) // set as global trace provider
