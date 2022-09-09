@@ -89,8 +89,8 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 
 
 // Get attempts to load the singleton from the store.
-func (s *{{$storeName}}) Get() (*models.{{.DbTypeName}}, string, error) {
-	data, info, lerr := s.backend.GetObject({{$filename}}.filename())
+func (s *{{$storeName}}) Get(ctx context.Context) (*models.{{.DbTypeName}}, string, error) {
+	data, info, lerr := s.backend.GetObject(ctx, {{$filename}}.filename())
 	if lerr != nil {
 		return nil, "", lerr.Msg("failed to get from minio")
 	}
@@ -134,12 +134,12 @@ func (s *{{$storeName}}) Delete(ctx context.Context) error {
 {{range .SecondaryIndexes -}}
 {{if eq .Type "unique"}}
 // GetBy{{.Name}} fetches a single {{$modelName}} by its {{.Key}}
-func (s *{{$storeName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, string, error) {
+func (s *{{$storeName}}) GetBy{{.Name}}(ctx context.Context, key string) (*models.{{$modelName}}, string, error) {
 	panic("not yet implemented")
 }
 {{else if eq .Type "set"}}
 // GetAllBy{{.Name}} fetches all {{$modelName}}s by their {{.Key}}
-func (s *{{$storeName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, error) {
+func (s *{{$storeName}}) GetAllBy{{.Name}}(ctx context.Context, key string) ([]models.{{$modelName}}, string, error) {
 	panic("not yet implemented")
 }
 {{end -}}
