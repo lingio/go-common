@@ -239,23 +239,8 @@ func RespondFile(ctx echo.Context, statusCode int, file []byte, fileName string,
 	return ctx.Blob(statusCode, contentType, file)
 }
 
+// RespondError is deprecated. Return an error directly in the middleware instead.
 func RespondError(ctx echo.Context, le *Error) error {
-	// Log error
-	// zle := zl.Warn()
-	// if le.HttpStatusCode >= 500 {
-	// 	zle = zl.Error().Err(le)
-	// }
-	// zle.Int("httpStatusCode", le.HttpStatusCode)
-	// zle.Str("trace", le.Trace)
-	// for k, v := range le.Map {
-	// 	zle = zle.Str(k, v)
-	// }
-	// zle.Msg(le.Message)
-
-	// // Create and set error object on the Echo Context
-	// e := ErrorStruct{
-	// 	Message: le.Message,
-	// }
-	// return Respond(ctx, le.HttpStatusCode, e, "")
-	return le
+	// returning le directly will busy loop somewhere in echo
+	return Errorf(le)
 }
