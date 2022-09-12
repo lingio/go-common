@@ -2,6 +2,7 @@ package common
 
 import (
 	"errors"
+	"net/http"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -33,10 +34,12 @@ func Errorf(err error, args ...interface{}) (lerr *Error) {
 
 	if lerr, ok := err.(*Error); ok && lerr != nil {
 		return NewErrorE(lerr.HttpStatusCode, err).Msg(lerr.Message)
+	} else if errors.Is(err, ErrObjectNotFound) {
+		return NewErrorE(http.StatusNotFound, err).Msg("object not found")
 	} else if err != nil {
-		return NewErrorE(599, err).Msg("unknown error")
+		return NewErrorE(http.StatusInternalServerError, err).Msg("unknown error")
 	}
-	return NewError(599).Msg("unknown error")
+	return NewError(http.StatusInternalServerError).Msg("unknown error")
 }
 
 // Error describes a traced HTTP error message with contextual details.
