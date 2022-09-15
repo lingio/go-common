@@ -159,7 +159,27 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 
 // Get attempts to load an object with the specified ID from the store.
 func (s *{{$storeName}}) Get(ctx context.Context, id string) (*models.{{.DbTypeName}}, string, error) {
-	return s.cache.Get(id)
+	obj, etag, err := return s.cache.Get(id)
+	if err == nil {
+		return obj, etag, nil
+	}
+
+	if errors.Is(err, common.ErrObjectNotFound) {
+		data, _, err := s.backend.GetObject({{$filename}}(id))
+		if err != nil {
+			return nil, "", common.Errorf(err)
+		}
+
+		var obj models.{{.DbTypeName}}
+		if err := json.Unmarshal([]byte(data), &obj); err != nil {
+			return nil, "", common.Errorf(err)
+		}
+
+		zl.Warn().Str("id", id).Msg("cache returned nil but backend found data")
+		return &obj, "", nil
+	}
+
+	return nil, "", err
 }
 
 {{if .GetAll -}}
