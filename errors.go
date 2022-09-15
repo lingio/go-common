@@ -51,6 +51,10 @@ type Error struct {
 	err            error
 }
 
+// Note (Axel): Ideally we make NewError/E internal in favor of Errorf:
+//   - most calls use http.StatusCodeInternalServerError which doesn't add any valuable information
+//   - extract error details from context object instead of explicitely passing them
+
 func NewError(httpStatusCode int) *Error {
 	return &Error{
 		HttpStatusCode: httpStatusCode,
