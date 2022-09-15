@@ -79,6 +79,21 @@ func HttpPut(ctx context.Context, url string, body interface{}, bearerToken stri
 	return executeReq(req)
 }
 
+func HttpPatch(ctx context.Context, url string, body interface{}, bearerToken string) ([]byte, error) {
+	bodyBuffer, lerr := createBodyBuffer(body)
+	if lerr != nil {
+		return []byte{}, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bodyBuffer)
+	if err != nil {
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	setBearerToken(req, bearerToken)
+	return executeReq(req)
+}
+
+
 func HttpDelete(ctx context.Context, url string, bearerToken string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
 	if err != nil {

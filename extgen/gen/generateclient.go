@@ -34,7 +34,7 @@ func Postfix(f Func) string {
 	if f.TmplParams.Params == "" {
 		postfix += "NoParams"
 	}
-	if (f.HttpMethod == "POST" || f.HttpMethod == "PUT" || f.HttpMethod == "DELETE") && f.TmplParams.BodyType == "" {
+	if (f.HttpMethod == "POST" || f.HttpMethod == "PUT" || f.HttpMethod == "DELETE" || f.HttpMethod == "PATCH") && f.TmplParams.BodyType == "" {
 		postfix += "NoBody"
 	}
 	return postfix
@@ -58,7 +58,7 @@ func GenerateFromSpec(es ExtSpec, specFilename string, outdir string) {
 	for _, fs := range es.TokenOperations {
 		f, ok := funcMap[fs]
 		if !ok {
-			zl.Fatal().Str("operationID", "fs").Msg("operationID not found")
+			zl.Fatal().Str("operationID", fs).Msg("operationID not found")
 		}
 		if f.TmplParams.TokenAuth {
 			b = append(b, generate(fmt.Sprintf("tmpl/%s/%s%s.tmpl", "token", strings.ToLower(f.HttpMethod), Postfix(f)), f.TmplParams)...)
@@ -69,7 +69,7 @@ func GenerateFromSpec(es ExtSpec, specFilename string, outdir string) {
 	for _, fs := range es.ApiKeyOperations {
 		f, ok := funcMap[fs]
 		if !ok {
-			zl.Fatal().Str("operationID", "fs").Msg("operationID not found")
+			zl.Fatal().Str("operationID", fs).Msg("operationID not found")
 		}
 		if f.TmplParams.ApiKeyAuth {
 			b = append(b, generate(fmt.Sprintf("tmpl/%s/%s%s.tmpl", "apikey", strings.ToLower(f.HttpMethod), Postfix(f)), f.TmplParams)...)
