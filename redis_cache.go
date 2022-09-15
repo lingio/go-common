@@ -84,6 +84,10 @@ func SetupRedisClient(cfg RedisConfig) (*redis.Client, error) {
 		failOverOptions := &redis.FailoverOptions{
 			MasterName:    cfg.MasterName,
 			SentinelAddrs: sentinelAddrs,
+			DialTimeout:   time.Second * 5,
+			MaxRetries:    3,
+			ReadTimeout:   time.Second,
+			WriteTimeout:  time.Second,
 		}
 
 		if cfg.SentinelPassword != nil || cfg.MasterPassword != nil {
@@ -95,7 +99,13 @@ func SetupRedisClient(cfg RedisConfig) (*redis.Client, error) {
 	}
 
 	if cfg.Addr != "" {
-		return redis.NewClient(&redis.Options{Addr: cfg.Addr}), nil
+		return redis.NewClient(&redis.Options{
+			Addr:         cfg.Addr,
+			DialTimeout:  time.Second * 5,
+			MaxRetries:   3,
+			ReadTimeout:  time.Second,
+			WriteTimeout: time.Second,
+		}), nil
 	}
 
 	return nil, &RedisSetupErr{Err: ErrInvalidRedisConfig}
