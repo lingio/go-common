@@ -145,7 +145,7 @@ func readAllFromStore(store *common.ObjectStore, keysOnly bool) <-chan Object {
 					}
 				}
 
-				data, info, err := store.GetObject(req.Key)
+				data, info, err := store.GetObject(context.TODO(), req.Key)
 				if err != nil {
 					errchan[workerId] <- fmt.Errorf("read: %w", err)
 					return
@@ -196,7 +196,7 @@ func writeIntoStore(store *common.ObjectStore, objectsPerSecond int, objects <-c
 						trap(errors.New("writing objects with expiration time is not yet implemented"))
 					}
 					_, err := store.PutObject(context.TODO(), obj.Key, obj.Data)
-					if err != nil && err.HttpStatusCode != http.StatusInternalServerError {
+					if lerr, ok := err.(*common.Error); ok && lerr.HttpStatusCode != http.StatusInternalServerError {
 						log.Println("got 500, will retry in 5s")
 						time.Sleep(5 * time.Second)
 						continue

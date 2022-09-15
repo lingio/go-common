@@ -2,12 +2,15 @@ package common
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 /* 	Fetch from remote service
@@ -20,14 +23,24 @@ Usage example:
 	err := json.Unmarshal(b, &cr)
 */
 
+var commonClient = http.Client{
+	Transport: otelhttp.NewTransport(&http.Transport{
+		MaxIdleConnsPerHost:   10,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       time.Second * 60,
+		ResponseHeaderTimeout: time.Second * 30,
+		TLSHandshakeTimeout:   time.Second * 30,
+	}, otelhttp.WithTracerProvider(nil)),
+}
+
 type RemoteError struct {
 	Message string `json:"message"`
 }
 
-func HttpGet(url string, bearerToken string) ([]byte, *Error) {
-	req, err := http.NewRequest("GET", url, nil)
+func HttpGet(ctx context.Context, url string, bearerToken string) (_ []byte, err error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, NewError(http.StatusInternalServerError).Msg("failed to create request")
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
 	setBearerToken(req, bearerToken)
 
@@ -38,88 +51,89 @@ func HttpGet(url string, bearerToken string) ([]byte, *Error) {
 	return executeReqWithRetry(req, shouldRetry, exponentialBackoff)
 }
 
-func HttpPost(url string, body interface{}, bearerToken string) ([]byte, *Error) {
+func HttpPost(ctx context.Context, url string, body interface{}, bearerToken string) ([]byte, error) {
 	bodyBuffer, lerr := createBodyBuffer(body)
 	if lerr != nil {
 		return []byte{}, nil
 	}
-	req, err := http.NewRequest("POST", url, bodyBuffer)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bodyBuffer)
 	if err != nil {
-		return nil, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed to create request")
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	setBearerToken(req, bearerToken)
 	return executeReq(req)
 }
 
-func HttpPut(url string, body interface{}, bearerToken string) ([]byte, *Error) {
+func HttpPut(ctx context.Context, url string, body interface{}, bearerToken string) ([]byte, error) {
 	bodyBuffer, lerr := createBodyBuffer(body)
 	if lerr != nil {
 		return []byte{}, nil
 	}
-	req, err := http.NewRequest("PUT", url, bodyBuffer)
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, bodyBuffer)
 	if err != nil {
-		return nil, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed to create request")
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	setBearerToken(req, bearerToken)
 	return executeReq(req)
 }
 
-func HttpPatch(url string, body interface{}, bearerToken string) ([]byte, *Error) {
+func HttpPatch(ctx context.Context, url string, body interface{}, bearerToken string) ([]byte, error) {
 	bodyBuffer, lerr := createBodyBuffer(body)
 	if lerr != nil {
 		return []byte{}, nil
 	}
-	req, err := http.NewRequest("PATCH", url, bodyBuffer)
+	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bodyBuffer)
 	if err != nil {
-		return nil, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed to create request")
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	setBearerToken(req, bearerToken)
 	return executeReq(req)
 }
 
-func HttpDelete(url string, bearerToken string) ([]byte, *Error) {
-	req, err := http.NewRequest("DELETE", url, nil)
+
+func HttpDelete(ctx context.Context, url string, bearerToken string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
 	if err != nil {
-		return nil, NewError(http.StatusInternalServerError).Msg("failed to create request")
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
 	setBearerToken(req, bearerToken)
 	return executeReq(req)
 }
 
-func HttpGetWithApiKey(url string, apiKey string) ([]byte, *Error) {
-	req, err := http.NewRequest("GET", url, nil)
+func HttpGetWithApiKey(ctx context.Context, url string, apiKey string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, NewError(http.StatusInternalServerError).Msg("failed to create request")
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
 	setApiKey(req, apiKey)
 	return executeReq(req)
 }
 
-func HttpPostWithApiKey(url string, body interface{}, apiKey string) ([]byte, *Error) {
+func HttpPostWithApiKey(ctx context.Context, url string, body interface{}, apiKey string) ([]byte, error) {
 	bodyBuffer, lerr := createBodyBuffer(body)
 	if lerr != nil {
 		return []byte{}, nil
 	}
-	req, err := http.NewRequest("POST", url, bodyBuffer)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bodyBuffer)
 	if err != nil {
-		return nil, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed to create request")
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	setApiKey(req, apiKey)
 	return executeReq(req)
 }
 
-func HttpPutWithApiKey(url string, body interface{}, apiKey string) ([]byte, *Error) {
+func HttpPutWithApiKey(ctx context.Context, url string, body interface{}, apiKey string) ([]byte, error) {
 	bodyBuffer, lerr := createBodyBuffer(body)
 	if lerr != nil {
 		return []byte{}, nil
 	}
-	req, err := http.NewRequest("PUT", url, bodyBuffer)
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, bodyBuffer)
 	if err != nil {
-		return nil, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed to create request")
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	setApiKey(req, apiKey)
@@ -127,29 +141,39 @@ func HttpPutWithApiKey(url string, body interface{}, apiKey string) ([]byte, *Er
 }
 
 func executeReq(req *http.Request) ([]byte, *Error) {
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := commonClient.Do(req)
 	if resp != nil && resp.Body != nil {
 		defer resp.Body.Close()
 	}
 	if err != nil {
+		lerr := NewErrorE(http.StatusBadGateway, err).
+			Str("host", req.URL.Host).
+			Str("url", req.URL.Path).
+			Msg("error calling remote service")
 		if resp != nil {
-			return nil, NewError(resp.StatusCode).Str("err", err.Error()).Str("host", req.URL.Host).Str("url", req.URL.Path).Msg("error calling remote service")
+			lerr.HttpStatusCode = resp.StatusCode
 		}
-		return nil, NewError(http.StatusBadGateway).Str("err", err.Error()).Str("host", req.URL.Host).Str("url", req.URL.Path).Msg("error calling remote service")
+		return nil, lerr
 	}
+
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return []byte{}, NewError(http.StatusInternalServerError).Str("err", err.Error()).Msg("failed reading the response")
+		return []byte{}, NewErrorE(http.StatusInternalServerError, err).Msg("failed reading the response")
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		var x RemoteError
-		err := json.Unmarshal(data, &x)
-		if err != nil {
-			return nil, NewError(http.StatusBadGateway).Str("host", req.URL.Host).Str("url", req.URL.Path).
-				Int("remoteStatusCode", resp.StatusCode).Msg("remote error without message")
+		if err := json.Unmarshal(data, &x); err != nil {
+			return nil, NewError(resp.StatusCode).
+				Str("host", req.URL.Host).
+				Str("url", req.URL.Path).
+				Int("remoteStatusCode", resp.StatusCode).
+				Msg("remote error without message")
 		}
-		return nil, NewError(resp.StatusCode).Str("url", req.URL.Path).
-			Int("remoteStatusCode", resp.StatusCode).Str("remoteError", x.Message).Msg("remote error")
+		return nil, NewError(resp.StatusCode).
+			Str("url", req.URL.Path).
+			Int("remoteStatusCode", resp.StatusCode).
+			Str("remoteError", x.Message).
+			Msg("remote error")
 	}
 	return data, nil
 }
@@ -162,7 +186,7 @@ type ShouldRetry func(code, attempt int) bool
 // Backoff returns the time to wait for request retry attempt.
 type Backoff func(attempt int) time.Duration
 
-func executeReqWithRetry(req *http.Request, shouldRetry ShouldRetry, backoff Backoff) ([]byte, *Error) {
+func executeReqWithRetry(req *http.Request, shouldRetry ShouldRetry, backoff Backoff) ([]byte, error) {
 	var attempt int
 	for {
 		data, err := executeReq(req)
@@ -191,7 +215,7 @@ func setApiKey(req *http.Request, key string) {
 	req.Header.Add("x-api-key", key)
 }
 
-func createBodyBuffer(body interface{}) (*bytes.Buffer, *Error) {
+func createBodyBuffer(body interface{}) (*bytes.Buffer, error) {
 	var bodyBuffer *bytes.Buffer
 	if body != nil {
 		jsonValue, err := json.Marshal(body)
@@ -219,8 +243,7 @@ func exponentialBackoff(attempt int) time.Duration {
 
 // isHttpStatusRetryable
 func isHttpStatusRetryable(statusCode int) bool {
-	// Enable these carefully! Might have unexpected effects on service
-	// behavior.
+	// Enable these carefully! Might have unexpected effects on service behavior.
 	switch statusCode {
 	// case http.StatusRequestTimeout: // Perhaps too loaded
 	// case http.StatusTooEarly: // Resource not yet ready

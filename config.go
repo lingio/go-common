@@ -16,3 +16,7 @@ type RedisConfig struct {
 	SentinelPassword *string
 	MasterPassword   *string
 }
+
+type MonitorConfig struct {
+	TempoHost string
+}

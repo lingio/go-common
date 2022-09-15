@@ -1,5 +1,5 @@
 // GET {{.Path}}
-func (c *LingioClient) {{.FuncName}}({{.Params}}) (*{{.RetObjType}}, *common.Error) {
+func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}) (*{{.RetObjType}}, error) {
 	var x {{.RetObjType}}
     {{- if .QueryParams}}
 
@@ -25,9 +25,9 @@ func (c *LingioClient) {{.FuncName}}({{.Params}}) (*{{.RetObjType}}, *common.Err
 	    query = "?" + query
 	}
 
-	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}%s", c.Server, {{.Params2}}, query), "")
+	b, lerr := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}%s", c.Server, {{.Params2}}, query), "")
 	{{- else}}
-	b, lerr := common.HttpGet(fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), "")
+	b, lerr := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), "")
 	{{- end}}
     {{template "parseJson.tmpl" -}}
 }

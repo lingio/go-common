@@ -1,6 +1,6 @@
 // PUT {{.Path}}
-func (c *LingioClient) {{.FuncName}}({{.Params}}, token string) *common.Error {
-	_, lerr := common.HttpPutNoBody(fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), token)
+func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}, token string) error {
+	_, lerr := common.HttpPutNoBody(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), token)
 	if lerr != nil {
 		return lerr
 	}

@@ -17,9 +17,9 @@ func (b *AtomicBool) SetFalse()   { atomic.StoreInt32((*int32)(b), 0) }
 
 // LingioStore is a simple file-based CRUD database interface.
 type LingioStore interface {
-	GetObject(file string) ([]byte, ObjectInfo, *Error)
-	PutObject(ctx context.Context, file string, data []byte) (ObjectInfo, *Error)
-	DeleteObject(ctx context.Context, file string) *Error
+	GetObject(ctx context.Context, file string) ([]byte, ObjectInfo, error)
+	PutObject(ctx context.Context, file string, data []byte) (ObjectInfo, error)
+	DeleteObject(ctx context.Context, file string) error
 	ListObjects(context.Context) <-chan ObjectInfo
 	StoreName() string
 }

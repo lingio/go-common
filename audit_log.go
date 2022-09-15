@@ -10,7 +10,7 @@ import (
 )
 
 // default audit logger
-var auditLog = zerolog.New(os.Stdout).With().Timestamp().Logger()
+var auditLogger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 
 // auditLogKeyType maps context key to zerolog field.
 type auditLogKeyType string
@@ -34,7 +34,8 @@ func auditLogFields() []auditLogKeyType {
 }
 
 func FromEcho(e echo.Context) context.Context {
-	ctx := context.TODO()
+	// use the original context as parent so we support echo middleware
+	ctx := e.Request().Context()
 
 	// TODO(Axel): Generate request ID
 	// ctx = context.WithValue(ctx, requestKey, snowflake.Generate())
@@ -75,7 +76,7 @@ func AuthTokenFrom(ctx context.Context) string {
 
 // LogAuditEvent outputs the provided app context
 func LogAuditEvent(ctx context.Context) {
-	evt := auditLog.Info()
+	evt := auditLogger.Info()
 	for _, k := range auditLogFields() {
 		// Don't print credentials.
 		if k == authKey {

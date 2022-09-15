@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"testing"
 )
@@ -32,7 +33,7 @@ func TestHttpGet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, gotErr := HttpGet(tt.args.url, tt.args.bearerToken)
+			_, gotErr := HttpGet(context.TODO(), tt.args.url, tt.args.bearerToken)
 			if gotErr != nil {
 				t.Error("unexpected error")
 			}
@@ -60,7 +61,7 @@ func TestHttpGetNotAuth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, gotErr := HttpGet(tt.args.url, tt.args.bearerToken)
+			_, gotErr := HttpGet(context.TODO(), tt.args.url, tt.args.bearerToken)
 			if gotErr != nil {
 				fmt.Printf("Remote Error: %s", gotErr.Error())
 			}

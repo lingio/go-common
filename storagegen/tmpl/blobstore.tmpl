@@ -71,7 +71,7 @@ func (s *{{$storeName}}) StoreName() string {
 //=============================================================================
 
 // Create attempts to store the provided byte blob in store.
-func (s *{{$storeName}}) Create(ctx context.Context, blob models.{{.DbTypeName}}) (*string, *common.Error) {
+func (s *{{$storeName}}) Create(ctx context.Context, blob models.{{.DbTypeName}}) (*string, error) {
 	id := uuid.NewV4().String()
 	if err := s.put(ctx, id, blob); err != nil {
 		return nil, err
@@ -81,8 +81,8 @@ func (s *{{$storeName}}) Create(ctx context.Context, blob models.{{.DbTypeName}}
 
 
 // Get attempts to load an byte blob with the specified ID from the store.
-func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
-	data, info, err := s.backend.GetObject({{$filename}}(id))
+func (s *{{$storeName}}) Get(ctx context.Context, id string) (*models.{{.DbTypeName}}, string, error) {
+	data, info, err := s.backend.GetObject(ctx, {{$filename}}(id))
 	if err != nil {
 		return nil, "", err
 	}
@@ -90,12 +90,12 @@ func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *commo
 }
 
 // Put updates or creates the byte blob in both cache backing store.
-func (s *{{$storeName}}) Put(ctx context.Context, id string, blob models.{{.DbTypeName}}) *common.Error {
+func (s *{{$storeName}}) Put(ctx context.Context, id string, blob models.{{.DbTypeName}}) error {
 	return s.put(ctx, id, blob)
 }
 
 // put does the heavy lifting for both Put and Create methods.
-func (s *{{$storeName}}) put(ctx context.Context, id string, blob models.{{.DbTypeName}}) *common.Error {
+func (s *{{$storeName}}) put(ctx context.Context, id string, blob models.{{.DbTypeName}}) error {
 	if _, err := s.backend.PutObject(ctx, {{$filename}}(id), blob); err != nil {
 		return err.Str("ID", id).Msg("failed to write to minio")
 	}
@@ -103,7 +103,7 @@ func (s *{{$storeName}}) put(ctx context.Context, id string, blob models.{{.DbTy
 }
 
 // Delete
-func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
+func (s *{{$storeName}}) Delete(ctx context.Context, id string) error {
 	if err := s.backend.DeleteObject(ctx, {{$filename}}(id)); err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
 			Str("ID", id).Msg("failed to delete object in minio")

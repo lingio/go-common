@@ -10,12 +10,18 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog"
 	zl "github.com/rs/zerolog/log"
 )
 
@@ -45,6 +51,7 @@ func combineSkippers(skippers ...echomiddleware.Skipper) echomiddleware.Skipper 
 func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
+	e.HidePort = true
 
 	// Init Prometheus
 	p := prometheus.NewPrometheus("echo", nil)
@@ -56,8 +63,72 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 	}
 
 	// Set up a basic Echo router and its middlewares
-	e.Use(echomiddleware.Logger()) // log all requests
-	e.Use(config.BodyLimit)        // limit request body size
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		if lerr, ok := err.(*Error); ok {
+			err := lerr // shadowing param err
+
+			// best-effort attempt at finding the first parent with a message
+			// if we don't have an error message in the provided error.
+			for err.Message == "" {
+				le := err.Unwrap()
+				if le == nil {
+					break
+				}
+
+				if le, ok := le.(*Error); ok {
+					err = le
+				}
+			}
+
+			e.DefaultHTTPErrorHandler(&echo.HTTPError{
+				Code:     lerr.HttpStatusCode,
+				Message:  err.Message, // what we return to api caller
+				Internal: lerr.Unwrap(),
+			}, c)
+		} else {
+			e.DefaultHTTPErrorHandler(err, c)
+		}
+	}
+	logger := zerolog.New(os.Stderr)
+	e.Use(echomiddleware.RequestLoggerWithConfig(echomiddleware.RequestLoggerConfig{
+		LogURI:           true,
+		LogStatus:        true,
+		LogLatency:       true,
+		LogRemoteIP:      true,
+		LogHost:          true,
+		LogError:         true,
+		LogMethod:        true,
+		LogProtocol:      true,
+		LogResponseSize:  true,
+		LogContentLength: true,
+		LogUserAgent:     true,
+		LogValuesFunc: func(c echo.Context, v echomiddleware.RequestLoggerValues) error {
+			span := trace.SpanFromContext(c.Request().Context())
+			zle := logger.Err(v.Error) // log level info if v.Error is nil, otherwise error
+			zle.Time("time", v.StartTime).
+				Str("host", v.Host).
+				Str("remote_ip", v.RemoteIP).
+				Str("user_agent", v.UserAgent).
+				Str("protocol", v.Protocol).
+				Str("method", v.Method).
+				Str("uri", v.URI).
+				Int("status", v.Status).
+				Int64("latency_us", v.Latency.Microseconds()).
+				Str("latency_human", v.Latency.String()).
+				Str("bytes_in", v.ContentLength).
+				Int64("bytes_out", v.ResponseSize).
+				Str("trace_id", span.SpanContext().TraceID().String())
+
+			if v.Error != nil {
+				zle.Str("full_trace", FullErrorTrace(v.Error))
+			}
+
+			zle.Msg("request") // actually log it
+
+			return nil
+		},
+	}))
+	e.Use(config.BodyLimit) // limit request body size
 	e.Use(echomiddleware.CORS())
 	e.Use(echomiddleware.GzipWithConfig(echomiddleware.GzipConfig{
 		Skipper: skipOnMetricRequest,
@@ -75,6 +146,13 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 	}
 	e.Use(middleware.OapiRequestValidatorWithOptions(swagger, options)) // check all requests against the OpenAPI schema
 
+	// after request validation
+	e.Use(otelecho.Middleware(
+		swagger.Info.Title,
+		otelecho.WithSkipper(skipOnMetricRequest),
+		otelecho.WithTracerProvider(otel.GetTracerProvider()),
+	))
+
 	return e
 }
 
@@ -90,6 +168,8 @@ type GracefulServer interface {
 var DefaultServeSignals = []os.Signal{os.Interrupt, syscall.SIGTERM}
 
 func ServeUntilSignal(e GracefulServer, addr string, signals ...os.Signal) {
+	zl.Info().Str("addr", addr).Msg("starting api server")
+
 	go func() {
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
 			zl.Fatal().Str("error", err.Error()).Msg("fatal error serving api")
@@ -101,10 +181,32 @@ func ServeUntilSignal(e GracefulServer, addr string, signals ...os.Signal) {
 	<-quit
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	zl.Info().Msg("shutting down api server")
 	if err := e.Shutdown(ctx); err != nil && err != http.ErrServerClosed {
-		zl.Fatal().Str("error", err.Error()).Msg("fatal error shutting down api server")
+		zl.Warn().Err(err).Msg("error shutting down api server")
 	}
 
+	// Best effort cleanup on service shutdown.
+	if tp, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
+		zl.Info().Msg("flushing traces")
+		if err := tp.ForceFlush(ctx); err != nil {
+			zl.Warn().Err(err).Msg("error flusing trace provider")
+		}
+		if err := tp.Shutdown(ctx); err != nil {
+			zl.Warn().Err(err).Msg("error shuting down trace provider")
+		}
+	}
+}
+
+func ShutdownServices(services ...interface{ Shutdown(context.Context) error }) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	for _, svc := range services {
+		if err := svc.Shutdown(ctx); err != nil {
+			zl.Warn().Err(err).Msg("error shutting down internal service")
+		}
+	}
 }
 
 func Respond(ctx echo.Context, statusCode int, val interface{}, etag string) error {
@@ -135,22 +237,8 @@ func RespondFile(ctx echo.Context, statusCode int, file []byte, fileName string,
 	return ctx.Blob(statusCode, contentType, file)
 }
 
+// RespondError is deprecated. Return an error directly in the middleware instead.
 func RespondError(ctx echo.Context, le *Error) error {
-	// Log error
-	zle := zl.Warn()
-	if le.HttpStatusCode >= 500 {
-		zle = zl.Error().Err(le)
-	}
-	zle.Int("httpStatusCode", le.HttpStatusCode)
-	zle.Str("trace", le.Trace)
-	for k, v := range le.Map {
-		zle = zle.Str(k, v)
-	}
-	zle.Msg(le.Message)
-
-	// Create and set error object on the Echo Context
-	e := ErrorStruct{
-		Message: le.Message,
-	}
-	return Respond(ctx, le.HttpStatusCode, e, "")
+	// returning le directly will busy loop somewhere in echo
+	return Errorf(le)
 }

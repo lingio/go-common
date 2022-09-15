@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -72,11 +73,11 @@ func (s *{{$storeName}}) StoreName() string {
 //=============================================================================
 
 // Create attempts to store the provided object in store.
-func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, *common.Error) {
+func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}}) (*models.{{.DbTypeName}}, error) {
 	if obj.{{.IdName}} != "" {
 		// check that the object doesn't exist
-		o, _, err := s.Get(obj.{{.IdName}})
-		if err != nil && err.HttpStatusCode != http.StatusNotFound {
+		o, _, err := s.Get(ctx, obj.{{.IdName}})
+		if err != nil && !errors.Is(err, common.ErrObjectNotFound) {
 			return nil, common.NewErrorE(http.StatusInternalServerError, err).
 				Str("ID", obj.{{.IdName}}).Msg("failed query for object")
 		}
@@ -88,17 +89,17 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 		obj.{{.IdName}} = uuid.NewV4().String()
 	}
 	if err := s.put(ctx, obj); err != nil {
-		return nil, err
+		return nil, common.Errorf(err).Msg("could not store new object")
 	}
 	return &obj, nil
 }
 
 
 // Get attempts to load an object with the specified ID from the store.
-func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *common.Error) {
-	data, info, lerr := s.backend.GetObject({{$filename}}(id))
-	if lerr != nil {
-		return nil, "", lerr
+func (s *{{$storeName}}) Get(ctx context.Context, id string) (*models.{{.DbTypeName}}, string, error) {
+	data, info, err := s.backend.GetObject(ctx, {{$filename}}(id))
+	if err != nil {
+		return nil, "", err
 	}
 	obj := &models.{{.DbTypeName}}{}
 	if err := json.Unmarshal(data, &obj); err != nil {
@@ -109,28 +110,28 @@ func (s *{{$storeName}}) Get(id string) (*models.{{.DbTypeName}}, string, *commo
 }
 
 // Put updates or creates the object in both cache and backing store.
-func (s *{{$storeName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
+func (s *{{$storeName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}) error {
 	return s.put(ctx, obj)
 }
 
 // put does the heavy lifting for both Put and Create methods.
-func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) *common.Error {
+func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) error {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err).
-			Str("ID", obj.{{.IdName}}).Msg("failed to marshal json")
+			Str("ID", obj.{{.IdName}}).Msg("Could not deserialize object data.")
 	}
-	_, lerr := s.backend.PutObject(ctx, {{$filename}}(obj.{{.IdName}}), data)
-	if lerr != nil {
-		return lerr.Str("ID", obj.{{.IdName}}).Msg("failed to write to minio")
+	_, err = s.backend.PutObject(ctx, {{$filename}}(obj.{{.IdName}}), data)
+	if err != nil {
+		return common.Errorf(err).Str("ID", obj.{{.IdName}}).Msg("Could not update object")
 	}
 	return nil
 }
 
 // Delete
-func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
+func (s *{{$storeName}}) Delete(ctx context.Context, id string) error {
 	if err := s.backend.DeleteObject(ctx, {{$filename}}(id)); err != nil {
-		return err.Str("ID", id).Msg("failed to delete object in minio")
+		return common.Errorf(err).Str("ID", id).Msg("Could not delete object")
 	}
 	return nil
 }
@@ -141,12 +142,12 @@ func (s *{{$storeName}}) Delete(ctx context.Context, id string) *common.Error {
 {{range .SecondaryIndexes -}}
 {{if eq .Type "unique"}}
 // GetBy{{.Name}} fetches a single {{$modelName}} by its {{.Key}}
-func (s *{{$storeName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, string, *common.Error) {
+func (s *{{$storeName}}) GetBy{{.Name}}(key string) (*models.{{$modelName}}, string, error) {
 	panic("not yet implemented")
 }
 {{else if eq .Type "set"}}
 // GetAllBy{{.Name}} fetches all {{$modelName}}s by their {{.Key}}
-func (s *{{$storeName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, *common.Error) {
+func (s *{{$storeName}}) GetAllBy{{.Name}}(key string) ([]models.{{$modelName}}, string, error) {
 	panic("not yet implemented")
 }
 {{end -}}
