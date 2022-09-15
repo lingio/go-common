@@ -13,10 +13,19 @@ import (
 	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
 )
 
-var ErrInvalidRedisConfig = errors.New("redis cache config is not valid")
+var onRedisCacheConnectHooks []func(context.Context)
+
+var ErrInvalidRedisConfig = errors.New("redis cache: config is not valid")
 
 const redisCacheKeyInitialized = "initialized"
 const redisCacheKeyInitializing = "initializing"
+
+// RegisterRedisOnConnectHook registers a func to be called whenever the
+// redis client establishes a new connection to the redis server. Assume that
+// this function can be called at any given time (in parallell too).
+func RegisterRedisOnConnectHook(hook func(context.Context)) {
+	onRedisCacheConnectHooks = append(onRedisCacheConnectHooks, hook)
+}
 
 // RedisSetupErr wraps an underlying error that occured during cache setup.
 type RedisSetupErr struct {
@@ -88,6 +97,7 @@ func SetupRedisClient(cfg RedisConfig) (*redis.Client, error) {
 			MaxRetries:    3,
 			ReadTimeout:   time.Second,
 			WriteTimeout:  time.Second,
+			OnConnect:     callRedisOnConnectHooks,
 		}
 
 		if cfg.SentinelPassword != nil || cfg.MasterPassword != nil {
@@ -105,10 +115,18 @@ func SetupRedisClient(cfg RedisConfig) (*redis.Client, error) {
 			MaxRetries:   3,
 			ReadTimeout:  time.Second,
 			WriteTimeout: time.Second,
+			OnConnect:    callRedisOnConnectHooks,
 		}), nil
 	}
 
 	return nil, &RedisSetupErr{Err: ErrInvalidRedisConfig}
+}
+
+func callRedisOnConnectHooks(ctx context.Context, conn *redis.Conn) error {
+	for _, fn := range onRedisCacheConnectHooks {
+		go fn(ctx)
+	}
+	return nil
 }
 
 //=============================================================================
