@@ -112,6 +112,14 @@ func New{{$storeName}}(ctx context.Context, mc *minio.Client, cache {{.TypeName}
 		return nil, fmt.Errorf("initializing cache: %w", err)
 	}
 	db.ready.SetTrue()
+
+	common.RegisterRedisOnConnectHook(func (ctx context.Context) {
+		if err := cache.Init(ctx, db.backend); err != nil {
+			zl.Error().Err(err).
+				Str("component", serviceKey).
+				Msg("cache re-initialization failed")
+		}
+	})
 	return db, nil
 }
 
