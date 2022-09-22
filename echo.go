@@ -89,6 +89,13 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 			e.DefaultHTTPErrorHandler(err, c)
 		}
 	}
+
+	e.Use(otelecho.Middleware(
+		swagger.Info.Title,
+		otelecho.WithSkipper(skipOnMetricRequest),
+		otelecho.WithTracerProvider(otel.GetTracerProvider()),
+	))
+
 	logger := zerolog.New(os.Stderr)
 	e.Use(echomiddleware.RequestLoggerWithConfig(echomiddleware.RequestLoggerConfig{
 		LogURI:           true,
@@ -145,13 +152,6 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 		return nil
 	}
 	e.Use(middleware.OapiRequestValidatorWithOptions(swagger, options)) // check all requests against the OpenAPI schema
-
-	// after request validation
-	e.Use(otelecho.Middleware(
-		swagger.Info.Title,
-		otelecho.WithSkipper(skipOnMetricRequest),
-		otelecho.WithTracerProvider(otel.GetTracerProvider()),
-	))
 
 	return e
 }
