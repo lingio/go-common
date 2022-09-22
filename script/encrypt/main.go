@@ -60,8 +60,8 @@ func main() {
 
 	if *decrypt {
 		for {
-			data, info, err := store.GetObject("dummyfilename16b") // read from stdin and decrypt
-			if err != nil && err.Unwrap() == io.EOF {
+			data, info, err := store.GetObject(context.TODO(), "dummyfilename16b") // read from stdin and decrypt
+			if errors.Is(err, io.EOF) {
 				break
 			} else if err != nil {
 				trap(fmt.Errorf("read: %w", err))
@@ -71,8 +71,8 @@ func main() {
 		}
 	} else {
 		for {
-			data, info, err := ds.GetObject("") // read directly from stdin
-			if err != nil && err.Unwrap() == io.EOF {
+			data, info, err := ds.GetObject(context.TODO(), "") // read directly from stdin
+			if errors.Is(err, io.EOF) {
 				break
 			} else if err != nil {
 				trap(fmt.Errorf("read: %w", err))
@@ -94,7 +94,7 @@ func trap(err error) {
 }
 
 // GetObject is supposed to be called when we're trying to decrypt an encrypted stdin.
-func (ds dummyStore) GetObject(filename string) ([]byte, common.ObjectInfo, *common.Error) {
+func (ds dummyStore) GetObject(ctx context.Context, filename string) ([]byte, common.ObjectInfo, error) {
 	var obj Object
 	if err := ds.decoder.Decode(&obj); err != nil {
 		return nil, common.ObjectInfo{}, common.NewErrorE(http.StatusInternalServerError, err)
@@ -103,7 +103,7 @@ func (ds dummyStore) GetObject(filename string) ([]byte, common.ObjectInfo, *com
 }
 
 // PutObject is supposed to be called when we're trying to encrypt a plain-text stdin.
-func (ds dummyStore) PutObject(ctx context.Context, file string, data []byte) (common.ObjectInfo, *common.Error) {
+func (ds dummyStore) PutObject(ctx context.Context, file string, data []byte) (common.ObjectInfo, error) {
 	if err := ds.encoder.Encode(Object{
 		Data: data,
 		ObjectInfo: common.ObjectInfo{
@@ -115,7 +115,7 @@ func (ds dummyStore) PutObject(ctx context.Context, file string, data []byte) (c
 	return common.ObjectInfo{}, nil
 }
 
-func (ds dummyStore) DeleteObject(ctx context.Context, file string) *common.Error {
+func (ds dummyStore) DeleteObject(ctx context.Context, file string) error {
 	return nil
 }
 func (ds dummyStore) ListObjects(ctx context.Context) <-chan common.ObjectInfo {
