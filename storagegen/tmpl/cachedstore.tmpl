@@ -445,7 +445,7 @@ func (c {{$cacheName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}, exp
 
 	// Fetch the previous version of this object (if there is any)
 	orig, _, err := c.Get(ctx, obj.{{.IdName}})
-	if !errors.Is(err, common.ErrObjectNotFound) {
+	if !errors.Is(err, redis.Nil) {
 		return err
 	}
 
