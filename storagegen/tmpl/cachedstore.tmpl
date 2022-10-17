@@ -593,7 +593,7 @@ func (c {{$cacheName}}) get(ctx context.Context, keyName string, key string) (*m
 	cmd := c.Client.Get(ctx, c.Key(keyName, key))
 	data, err := cmd.Result()
 	if errors.Is(err, redis.Nil) {
-		return nil, "", common.NewErrorE(http.StatusNotFound, err)
+		return nil, "", common.Errorf(common.ErrObjectNotFound, http.StatusNotFound)
 	} else if err != nil {
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
