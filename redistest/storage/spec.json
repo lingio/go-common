@@ -1,0 +1,33 @@
+{
+  "serviceName": "go-common/redistest",
+  "buckets": [
+    {
+      "typeName": "Test",
+      "dbTypeName": "Test",
+      "bucketName": "redistest--test",
+      "template": "cachedstore.tmpl",
+      "version": "1",
+      "idName": "ID",
+      "filenameFormat": "redistest-%s.json",
+      "secondaryIndexes": [
+        {
+          "key": "Topic",
+          "name": "Topic",
+          "type": "set"
+        },
+        {
+          "keys": [
+            {
+              "key": "Topic"
+            },
+            {
+              "key": "Subtopic"
+            }
+          ],
+          "name": "TopicAndSubtopic",
+          "type": "set"
+        }
+      ]
+    }
+  ]
+}

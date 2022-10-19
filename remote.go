@@ -44,17 +44,20 @@ func HttpGet(ctx context.Context, url string, bearerToken string) (_ []byte, err
 	}
 	setBearerToken(req, bearerToken)
 
-	shouldRetry := func(code, attempt int) bool {
-		return isHttpStatusRetryable(code) && attempt < 3
+	shouldRetry := func(err error, attempt int) bool {
+		if lerr, ok := err.(*Error); ok && lerr != nil {
+			return isHttpStatusRetryable(lerr.HttpStatusCode) && attempt < 3
+		}
+		return false
 	}
 
 	return executeReqWithRetry(req, shouldRetry, exponentialBackoff)
 }
 
 func HttpPost(ctx context.Context, url string, body interface{}, bearerToken string) ([]byte, error) {
-	bodyBuffer, lerr := createBodyBuffer(body)
-	if lerr != nil {
-		return []byte{}, nil
+	bodyBuffer, err := createBodyBuffer(body)
+	if err != nil {
+		return []byte{}, err
 	}
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bodyBuffer)
 	if err != nil {
@@ -92,7 +95,6 @@ func HttpPatch(ctx context.Context, url string, body interface{}, bearerToken st
 	setBearerToken(req, bearerToken)
 	return executeReq(req)
 }
-
 
 func HttpDelete(ctx context.Context, url string, bearerToken string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
@@ -140,7 +142,7 @@ func HttpPutWithApiKey(ctx context.Context, url string, body interface{}, apiKey
 	return executeReq(req)
 }
 
-func executeReq(req *http.Request) ([]byte, *Error) {
+func executeReq(req *http.Request) ([]byte, error) {
 	resp, err := commonClient.Do(req)
 	if resp != nil && resp.Body != nil {
 		defer resp.Body.Close()
@@ -179,9 +181,9 @@ func executeReq(req *http.Request) ([]byte, *Error) {
 }
 
 // ShouldRetry returns whether a request can be retried:
-//    code    = http status code
+//    err     = request error
 //    attempt = 0-based retry counter
-type ShouldRetry func(code, attempt int) bool
+type ShouldRetry func(err error, attempt int) bool
 
 // Backoff returns the time to wait for request retry attempt.
 type Backoff func(attempt int) time.Duration
@@ -194,7 +196,7 @@ func executeReqWithRetry(req *http.Request, shouldRetry ShouldRetry, backoff Bac
 			return data, nil
 		}
 
-		if shouldRetry(err.HttpStatusCode, attempt) {
+		if shouldRetry(err, attempt) {
 			time.Sleep(backoff(attempt))
 			attempt++
 			continue
