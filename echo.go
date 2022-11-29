@@ -91,6 +91,7 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 	}
 
 	e.Use(echomiddleware.RequestID())
+
 	e.Use(otelecho.Middleware(
 		swagger.Info.Title,
 		otelecho.WithSkipper(skipOnMetricRequest),
@@ -109,6 +110,7 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 		LogProtocol:      true,
 		LogResponseSize:  true,
 		LogContentLength: true,
+		LogRoutePath:     true,
 		LogUserAgent:     true,
 		LogValuesFunc: func(c echo.Context, v echomiddleware.RequestLoggerValues) error {
 			span := trace.SpanFromContext(c.Request().Context())
@@ -119,7 +121,8 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 				Str("user_agent", v.UserAgent).
 				Str("protocol", v.Protocol).
 				Str("method", v.Method).
-				Str("uri", v.URI).
+				Str("uri", v.URI).        // /users/5?q=1
+				Str("path", v.RoutePath). // /users/:userid
 				Int("status", v.Status).
 				Int64("latency_us", v.Latency.Microseconds()).
 				Str("latency_human", v.Latency.String()).
