@@ -90,6 +90,7 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 		}
 	}
 
+	e.Use(echomiddleware.RequestID())
 	e.Use(otelecho.Middleware(
 		swagger.Info.Title,
 		otelecho.WithSkipper(skipOnMetricRequest),
@@ -124,7 +125,8 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 				Str("latency_human", v.Latency.String()).
 				Str("bytes_in", v.ContentLength).
 				Int64("bytes_out", v.ResponseSize).
-				Str("trace_id", span.SpanContext().TraceID().String())
+				Str("trace_id", span.SpanContext().TraceID().String()).
+				Str("correlation_id", c.Response().Header().Get("X-Request-ID"))
 
 			if v.Error != nil {
 				zle.Str("full_trace", FullErrorTrace(v.Error))
