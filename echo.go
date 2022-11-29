@@ -99,6 +99,20 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 	))
 
 	logger := zerolog.New(os.Stderr)
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			reqlogger := zerolog.New(os.Stderr).With().
+				Caller().
+				Timestamp().
+				Str("correlation_id", c.Response().Header().Get("X-Request-ID")).
+				Logger()
+
+			ctx := c.Request().Context()
+			wrappedCtx := reqlogger.WithContext(ctx)
+			c.SetRequest(c.Request().WithContext(wrappedCtx))
+			return next(c)
+		}
+	})
 	e.Use(echomiddleware.RequestLoggerWithConfig(echomiddleware.RequestLoggerConfig{
 		LogURI:           true,
 		LogStatus:        true,
