@@ -584,6 +584,35 @@ func (c {{$cacheName}}) get(keyName string, key string) (*models.{{.DbTypeName}}
 func (c {{$cacheName}}) Get({{.IdName | ToLower}} string) (*models.{{.DbTypeName}}, string, *common.Error) {
 	return c.get({{$cacheKey}}ID, {{.IdName | ToLower}})
 }
+
+// MGet fetches multiple {{$modelName}} by their ID at the same time.
+func (c {{$cacheName}}) MGet(ids ...string) ([]models.{{.DbTypeName}}, string, *common.Error) {
+	objs := make([]models.{{.DbTypeName}}, 0, len(ids))
+
+	for i, key := range ids {
+		ids[i] = c.Key({{$cacheKey}}ID, key)
+	}
+
+	res, err := c.Client.MGet(context.TODO(), ids...).Result()
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	for _, data := range res {
+		// should be rare case; the id we fetched does not exist
+		if data == nil {
+			continue
+		}
+
+		var co {{.PrivateTypeName}}CacheObject
+		if err := json.Unmarshal([]byte(data.(string)), &co); err != nil {
+			return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+		}
+		objs = append(objs, co.Entity)
+	}
+
+	return objs, "", nil
+}
+
 {{range .SecondaryIndexes -}}
 {{$keyList :=  .Keys | IndexKeysOnly | CamelCase | Join ", " }}
 {{if eq .Type "unique"}}
@@ -600,13 +629,9 @@ func (c *{{$cacheName}}) GetAllBy{{.Name}}({{$keyList}} string) ([]models.{{$mod
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
-	objs := make([]models.{{$modelName}}, 0, 5)
-	for _, key := range keys {
-		obj, _, err := c.Get(key)
-		if err != nil {
-			return nil, "", err
-		}
-		objs = append(objs, *obj)
+	objs, _, err := c.MGet(keys...)
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
 	etag, err := c.Client.Get(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Result()
@@ -628,13 +653,9 @@ func (c *{{$cacheName}}) GetAll() ([]models.{{$modelName}}, string, *common.Erro
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
-	objs := make([]models.{{$modelName}}, 0, 5)
-	for _, key := range keys {
-		obj, _, err := c.Get(key)
-		if err != nil {
-			return nil, "", err
-		}
-		objs = append(objs, *obj)
+	objs, _, err := c.MGet(keys...)
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
 	etag, err := c.Client.Get(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Result()
