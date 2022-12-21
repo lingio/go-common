@@ -114,6 +114,7 @@ func SetupRedisClient(cfg RedisConfig) (*redis.Client, error) {
 			DialTimeout:  time.Second * 5,
 			MaxRetries:   3,
 			ReadTimeout:  time.Second,
+			Password:     Str(cfg.MasterPassword),
 			WriteTimeout: time.Second,
 			OnConnect:    callRedisOnConnectHooks,
 		}), nil
