@@ -588,6 +588,9 @@ func (c {{$cacheName}}) Get({{.IdName | ToLower}} string) (*models.{{.DbTypeName
 // MGet fetches multiple {{$modelName}} by their ID at the same time.
 func (c {{$cacheName}}) MGet(ids ...string) ([]models.{{.DbTypeName}}, string, *common.Error) {
 	objs := make([]models.{{.DbTypeName}}, 0, len(ids))
+	if len(ids) == 0 {
+		return objs, "", nil
+	}
 
 	for i, key := range ids {
 		ids[i] = c.Key({{$cacheKey}}ID, key)
