@@ -632,9 +632,9 @@ func (c *{{$cacheName}}) GetAllBy{{.Name}}({{$keyList}} string) ([]models.{{$mod
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
-	objs, _, err := c.MGet(keys...)
-	if err != nil {
-		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	objs, _, lerr := c.MGet(keys...)
+	if lerr != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, lerr)
 	}
 
 	etag, err := c.Client.Get(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Result()
@@ -656,9 +656,9 @@ func (c *{{$cacheName}}) GetAll() ([]models.{{$modelName}}, string, *common.Erro
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
-	objs, _, err := c.MGet(keys...)
-	if err != nil {
-		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	objs, _, lerr := c.MGet(keys...)
+	if lerr != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, lerr)
 	}
 
 	etag, err := c.Client.Get(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Result()
