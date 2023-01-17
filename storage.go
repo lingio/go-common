@@ -43,6 +43,7 @@ type IndexComponent struct {
 	Key      string
 	Param    string
 	Optional bool
+	KeyType  string
 
 	// Exclude this component when generating the composite index?
 	// Very useful when checking for an optional parent.
