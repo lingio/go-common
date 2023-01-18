@@ -204,10 +204,23 @@ func camelCaseKey(keys []common.IndexComponent) []string {
 }
 
 func accessField(i common.IndexComponent, on string) string {
+	accessor := fmt.Sprintf("%s.%s", on, i.Key)
+	deref := ""
 	if i.Optional {
-		return fmt.Sprintf("*%s.%s", on, i.Key)
+		deref = "*"
 	}
-	return fmt.Sprintf("%s.%s", on, i.Key)
+
+	switch i.KeyType {
+	case "date":
+		accessor = accessor + `.Format("2006-01-02")`
+	case "bool":
+		accessor = "strconv.FormatBool(" + deref + accessor + ")"
+	case "email":
+		accessor = "string(" + deref + accessor + ")"
+	default:
+		accessor = deref + accessor
+	}
+	return accessor
 }
 
 // obj []indexes => [obj.Field1, *obj.Field2, ...]
