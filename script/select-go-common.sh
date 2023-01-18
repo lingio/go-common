@@ -14,11 +14,11 @@ else
 fi
 
 if [[ "${WANTED_VERSION}" != "${CURRENT_VERSION}" ]]; then
-  echo "Upgrading go-common ${CURRENT_VERSION} --> ${WANTED_VERSION}"
-  go get "github.com/lingio/go-common@${WANTED_VERSION}"
-  go mod tidy
-  git add go.mod go.sum
-  git commit -m "autobump go-common to ${WANTED_VERSION}"
+  >&2 echo "Upgrading go-common ${CURRENT_VERSION} --> ${WANTED_VERSION}"
+  >&2 go get "github.com/lingio/go-common@${WANTED_VERSION}"
+  >&2 go mod tidy
+  >&2 git add go.mod go.sum
+  >&2 git commit -m "autobump go-common to ${WANTED_VERSION}"
 fi
 
 echo $WANTED_VERSION
