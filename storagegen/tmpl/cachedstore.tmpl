@@ -348,7 +348,7 @@ func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 
 		taskGrp.Go(func() error {
 			subgrp, wctx := errgroup.WithContext(wctx)
-			for i := 0; i < NUM_WORKERS*20; i++ {
+			for i := 0; i < NUM_WORKERS; i++ {
 				subgrp.Go(func() error {
 					for {
 						select {
@@ -422,6 +422,8 @@ func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 }
 
 func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration, etag string) *common.Error {
+	ctx := context.Background()
+	pipe := c.Client.TxPipeline()
 
 	co := {{.PrivateTypeName}}CacheObject{
 		ETag:   etag,
@@ -434,19 +436,19 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 		return lerr
 	}
 
-	// Primary index: {{.IdName}}
-	if lerr = c.put(c.Key({{$cacheKey}}ID, obj.{{.IdName}}), co, expiration); lerr != nil {
-		return lerr
+	data, err := json.Marshal(co)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
+
+	// Primary index: {{.IdName}}
+	pipe.Set(ctx, c.Key({{$cacheKey}}ID, obj.{{.IdName}}), data, expiration)
 
 	{{ if .GetAll -}}
 	// Primary index for all objects set: people.v1.all=all
 	// ETag index for all objects set: people.v1.etag.all=all
-	c.Client.SAdd(context.TODO(), c.Key({{$cacheKey}}All, {{$cacheKey}}All), obj.{{$ID}})
-	err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.SAdd(ctx, c.Key({{$cacheKey}}All, {{$cacheKey}}All), obj.{{$ID}})
+	pipe.Incr(ctx, c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All))
 	{{- end }}
 
 	{{if .SecondaryIndexes -}}
@@ -460,16 +462,12 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	// Optional unique index: {{.Name}}
 	if {{ .Keys | CheckOptional "obj" | Join " && " }} {
 		idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-		if lerr = c.put(c.Key({{$cacheKey}}{{.Name}}, idx), co, expiration); lerr != nil {
-			return lerr
-		}
+		pipe.Set(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), data, expiration)
 	}
 	{{else -}}
 	// Unique index: {{.Name}}
 	idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-	if lerr = c.put(c.Key({{$cacheKey}}{{.Name}}, idx), co, expiration); lerr != nil {
-		return lerr
-	}
+	pipe.Set(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), data, expiration)
 	{{end -}}
 	{{end -}}
 	{{end}}
@@ -481,20 +479,14 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 	// Optional set index: {{.Name}}
 	if {{ .Keys | CheckOptional "obj" | Join " && " }} {
 		idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-		c.Client.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
-		err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-		if err != nil {
-			return common.NewErrorE(http.StatusInternalServerError, err)
-		}
+		pipe.SAdd(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
+		pipe.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx))
 	}
 	{{else -}}
 	// Set index: {{.Name}}
 	idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-	c.Client.SAdd(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
-	err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.SAdd(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
+	pipe.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx))
 	{{end -}}
 	{{end -}}
 	{{end}}
@@ -512,19 +504,13 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 			newNil := !({{ .Keys | CheckOptional "obj" | Join " && " }})
 			if (oldExists && newNil) || (oldExists && !newNil && ({{ .Keys | CompareFields "obj" "orig" " != " | Join " || "}})) {
 				idx := CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
-				err := c.Client.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
-				if err != nil {
-					return common.NewErrorE(http.StatusInternalServerError, err)
-				}
+				pipe.Del(ctx, c.Key({{$cacheKey}}{{.Name}}, idx))
 			}
 		}
 		{{- else -}}
 		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " || " }} {
 			idx = CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
-			err := c.Client.Del(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
-			if err != nil {
-				return common.NewErrorE(http.StatusInternalServerError, err)
-			}
+			pipe.Del(ctx, c.Key({{$cacheKey}}{{.Name}}, idx))
 		}
 		{{end -}}
 		{{end -}}
@@ -539,26 +525,25 @@ func (c {{$cacheName}}) Put(obj models.{{.DbTypeName}}, expiration time.Duration
 			newNil := !({{ .Keys | CheckOptional "obj" | Join " && " }})
 			if (oldExists && newNil) || (oldExists && !newNil && ({{ .Keys | CompareFields "obj" "orig" " != " | Join " || "}})) {
 				idx = CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
-				c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
-				err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-				if err != nil {
-					return common.NewErrorE(http.StatusInternalServerError, err)
-				}
+				pipe.SRem(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
+				pipe.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx))
 			}
 		}
 		{{- else -}}
 		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " || " }} {
 			idx = CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
-			c.Client.SRem(context.TODO(), c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
-			err := c.Client.Incr(context.TODO(), c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-			if err != nil {
-				return common.NewErrorE(http.StatusInternalServerError, err)
-			}
+			pipe.SRem(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
+			pipe.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx))
 		}
 		{{end -}}
 		{{end -}}
 		{{end}}
 	}
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+
 	return nil
 }
 
