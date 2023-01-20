@@ -85,7 +85,6 @@ type {{.PrivateTypeName}}CacheObject struct {
 type {{.TypeName}}CacheIngest struct {
 	common.ObjectInfo
 	Entity models.{{.DbTypeName}}
-	Err error
 }
 
 // New{{$storeName}} configures a new store and initializes the provided cache if required.
@@ -249,11 +248,11 @@ func (c {{$cacheName}}) Initialized() (bool, error) {
 // the bucket --> cache initialization takes, we need to periodically extend
 // the lock while we fill the cache with data from the object store backend.
 func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
-	var objectsLoaded int
+	var objectsLoaded uint32
 	defer func() {
 		if resulterr == nil {
 			c.WarmedUp.SetTrue()
-			zl.Info().Str("component", "{{$storeName}}").Int("objectsLoaded", objectsLoaded).Msg("cache initialized.")
+			zl.Info().Str("component", "{{$storeName}}").Uint32("objectsLoaded", objectsLoaded).Msg("cache initialized.")
 		}
 	}()
 
@@ -287,7 +286,7 @@ func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 			}
 		}(ctx)
 
-		// Now that we have the lock, ensure that our view of the cache init status is up-to-date.
+		// Now that we have the lock, ensure that our view of the cache init status is still up-to-date.
 		if ok, err := c.Initialized(); err != nil {
 			return fmt.Errorf("checking cache: %w", err)
 		} else if ok {
@@ -297,121 +296,126 @@ func (c *{{$cacheName}}) Init(backend common.LingioStore) (resulterr error) {
 
 		zl.Info().Str("component", "{{$storeName}}").Msg("cache not initialized, lock acquired, now fetching all data...")
 
-		const NUM_WORKERS = 15
+		const NUM_WORKERS = 50
 
-		listing := backend.ListObjects(ctx)
-		// workerout is closed by worker pool process
-		workerout := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
-		// initobj is closed by main control loop
-		cacheinit := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
+		masterGrp, mctx := errgroup.WithContext(ctx)
+		taskGrp, wctx := errgroup.WithContext(ctx)
+		cacheinit := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*400)
 
-		// Launch worker process.
-		var wg sync.WaitGroup
-		wg.Add(NUM_WORKERS)
-		go func() {
-			defer close(workerout)
-
-			worker := func() {
-				defer wg.Done()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case req, more := <-listing:
-						if !more {
-							return
-						}
-
-						data, info, err := backend.GetObject(req.Key)
-						if err != nil {
-							workerout <- {{.TypeName}}CacheIngest{
-								ObjectInfo: common.ObjectInfo{},
-								Entity:     models.{{.DbTypeName}}{},
-								Err: 		fmt.Errorf("backend: %w", err),
+		// Load objects from backend
+		taskGrp.Go(func() error {
+			listing := backend.ListObjects(wctx)
+			subgrp, wctx := errgroup.WithContext(wctx)
+			defer close(cacheinit)
+			for i := 0; i < NUM_WORKERS; i++ {
+				subgrp.Go(func() error {
+					for {
+						select {
+						case <-wctx.Done():
+							return nil
+						case req, more := <-listing:
+							if !more {
+								return nil
 							}
-							return
-						}
 
-						var entity models.{{.DbTypeName}}
-						if err := json.Unmarshal(data, &entity); err != nil {
-							workerout <- {{.TypeName}}CacheIngest{
-								ObjectInfo: common.ObjectInfo{},
-								Entity:     models.{{.DbTypeName}}{},
-								Err: 		fmt.Errorf("unmarshalling: %w", err),
+							data, info, err := backend.GetObject(req.Key)
+							if err != nil {
+								return fmt.Errorf("backend: %w", err)
 							}
-							return
-						}
 
-						if info.Key != {{$filename}}(entity.{{.IdName}}) {
-							zl.Warn().Str("key", info.Key).Msg("skipping object with mismatched filename")
-							continue
-						}
+							var entity models.{{.DbTypeName}}
+							if err := json.Unmarshal(data, &entity); err != nil {
+								return fmt.Errorf("unmarshalling: %w", err)
+							}
 
-						workerout <- {{.TypeName}}CacheIngest{
-							ObjectInfo: info,
-							Entity:     entity,
-							Err: 		nil,
+							if info.Key != {{$filename}}(entity.{{.IdName}}) {
+								zl.Warn().Str("key", info.Key).Msg("skipping object with mismatched filename")
+								continue
+							}
+
+							cacheinit <- {{.TypeName}}CacheIngest{
+								ObjectInfo: info,
+								Entity:     entity,
+							}
 						}
 					}
+					return nil
+				})
+			}
+			return subgrp.Wait()
+		})
+
+
+		taskGrp.Go(func() error {
+			subgrp, wctx := errgroup.WithContext(wctx)
+			for i := 0; i < NUM_WORKERS*20; i++ {
+				subgrp.Go(func() error {
+					for {
+						select {
+						case <-wctx.Done():
+							return nil
+						case obj, more := <-cacheinit:
+							if !more {
+								return nil
+							}
+							var expiration time.Duration
+							if !obj.Expiration.IsZero() {
+								expiration = obj.Expiration.Sub(time.Now())
+							}
+							if err := c.Put(obj.Entity, expiration, obj.ETag); err != nil {
+								return fmt.Errorf("cache init: %w", err)
+							}
+
+							loaded := atomic.AddUint32(&objectsLoaded, 1)
+							if loaded % 10_000 == 0 {
+								zl.Info().Str("component", "{{$storeName}}").
+									Uint32("objectsLoaded", loaded).
+									Msg("initializing cache")
+
+							}
+						}
+					}
+				})
+			}
+			return subgrp.Wait()
+		})
+
+
+		masterGrp.Go(func() error {
+			ticker := time.NewTicker(3*time.Second)
+			defer ticker.Stop()
+
+			taskGrpDone := make(chan error)
+			defer close(taskGrpDone)
+			go func() {
+				taskGrpDone <- taskGrp.Wait()
+			}()
+
+			for {
+				select {
+				case <-ticker.C:
+					if err := c.AcquireInitLock(mctx); err != nil {
+						return fmt.Errorf("cache lock refresh: %w", err)
+					}
+				case err := <-taskGrpDone:
+					return err
 				}
 			}
+		})
 
-			for i := 0; i < NUM_WORKERS; i++ {
-				go worker()
-			}
-			wg.Wait()
-		}()
 
-		// Main control loop: will periodically refresh the cache lock, check
-		// for errors in bucket listing and put objects into the cache.
-		ticker := time.NewTicker(3*time.Second)
-		objectsLoaded = 0
-		main_control_loop:
-		for {
-			select {
-			case <-ticker.C:
-				if err := c.AcquireInitLock(ctx); err != nil {
-					resulterr = err
-					break main_control_loop
-				}
-			case obj, more := <-workerout:
-				if !more {
-					break main_control_loop
-				}
-				if obj.Err != nil {
-					resulterr = obj.Err
-					break main_control_loop
-				}
-				var expiration time.Duration
-				if !obj.Expiration.IsZero() {
-					expiration = obj.Expiration.Sub(time.Now())
-				}
-				if err := c.Put(obj.Entity, expiration, obj.ETag); err != nil {
-					resulterr = err
-					break main_control_loop
-				}
-				objectsLoaded++
-				if objectsLoaded % 10_000 == 0 {
-					zl.Info().Str("component", "{{$storeName}}").
-						Int("objectsLoaded", objectsLoaded).
-						Msg("initializing cache")
-
-				}
-			}
+		if err := masterGrp.Wait(); err != nil {
+			return err
 		}
-		ticker.Stop()
-		close(cacheinit)
 
 		// Only mark cache as initialized if we didn't encounter any error.
-		if resulterr == nil {
-			if err := c.Client.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil {
-				zl.Warn().Str("component", "{{$storeName}}").Msg("could not mark cache as initialized")
-				resulterr = err
-			}
+		if err := c.Client.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil {
+			zl.Warn().Str("component", "{{$storeName}}").Msg("could not mark cache as initialized")
+			return err
 		}
 
 		// returning will cancel the ctx, which will also cancel listing and workers
-		return resulterr
+		return nil
 	}
 
 	//unreachable!
