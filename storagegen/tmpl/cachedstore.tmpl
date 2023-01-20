@@ -268,11 +268,11 @@ func New{{$cacheName}}(client *redis.Client) *{{$cacheName}} {
 // the bucket --> cache initialization takes, we need to periodically extend
 // the lock while we fill the cache with data from the object store backend.
 func (c *{{$cacheName}}) Init(ctx context.Context, backend common.LingioStore) (resulterr error) {
-	var objectsLoaded int
+	var objectsLoaded uint32
 	defer func() {
 		if resulterr == nil {
 			c.WarmedUp.SetTrue()
-			zl.Info().Str("component", "{{$storeName}}").Int("objectsLoaded", objectsLoaded).Msg("cache initialized.")
+			zl.Info().Str("component", "{{$storeName}}").Uint32("objectsLoaded", objectsLoaded).Msg("cache initialized.")
 		}
 	}()
 
@@ -286,7 +286,7 @@ func (c *{{$cacheName}}) Init(ctx context.Context, backend common.LingioStore) (
 		}
 
 		// All concurrent processes will exit before or when this context completes.
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctx)
 
 		// Try to acquire the init lock. It will be valid for a few seconds and we might need to extend it.
 		// If something stops the world (GC pause / ??) we might lose the lock (and not know about it).
@@ -306,7 +306,7 @@ func (c *{{$cacheName}}) Init(ctx context.Context, backend common.LingioStore) (
 			}
 		}(ctx)
 
-		// Now that we have the lock, ensure that our view of the cache init status is up-to-date.
+		// Now that we have the lock, ensure that our view of the cache init status is still up-to-date.
 		if ok, err := c.Initialized(); err != nil {
 			return fmt.Errorf("checking cache: %w", err)
 		} else if ok {
@@ -316,131 +316,139 @@ func (c *{{$cacheName}}) Init(ctx context.Context, backend common.LingioStore) (
 
 		zl.Info().Str("component", "{{$storeName}}").Msg("cache not initialized, lock acquired, now fetching all data...")
 
-		const NUM_WORKERS = 15
+		const NUM_WORKERS = 50
 
-		listing := backend.ListObjects(ctx)
-		// workerout is closed by worker pool process
-		workerout := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
-		// initobj is closed by main control loop
-		cacheinit := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*2)
+		taskGrp, wctx := errgroup.WithContext(ctx)
+		cacheinit := make(chan {{.TypeName}}CacheIngest, NUM_WORKERS*400)
 
-		// Launch worker process.
-		var wg sync.WaitGroup
-		wg.Add(NUM_WORKERS)
-		go func() {
-			defer close(workerout)
-
-			worker := func() {
-				defer wg.Done()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case req, more := <-listing:
-						if !more {
-							return
-						}
-
-						data, info, err := backend.GetObject(ctx, req.Key)
-						if err != nil {
-							workerout <- {{.TypeName}}CacheIngest{
-								ObjectInfo: common.ObjectInfo{},
-								Entity:     models.{{.DbTypeName}}{},
-								Err: 		fmt.Errorf("backend: %w", err),
+		// Load objects from backend
+		taskGrp.Go(func() error {
+			listing := backend.ListObjects(wctx)
+			subgrp, wctx := errgroup.WithContext(wctx)
+			defer close(cacheinit)
+			for i := 0; i < NUM_WORKERS; i++ {
+				subgrp.Go(func() error {
+					for {
+						select {
+						case <-wctx.Done():
+							return nil
+						case req, more := <-listing:
+							if !more {
+								return nil
 							}
-							return
-						}
 
-						var entity models.{{.DbTypeName}}
-						if err := json.Unmarshal(data, &entity); err != nil {
-							workerout <- {{.TypeName}}CacheIngest{
-								ObjectInfo: common.ObjectInfo{},
-								Entity:     models.{{.DbTypeName}}{},
-								Err: 		fmt.Errorf("unmarshalling: %w", err),
+							data, info, err := backend.GetObject(wctx, req.Key)
+							if err != nil {
+								return fmt.Errorf("backend: %w", err)
 							}
-							return
-						}
 
-						if info.Key != {{$filename}}(entity.{{.IdName}}) {
-							zl.Warn().Str("key", info.Key).Msg("skipping object with mismatched filename")
-							continue
-						}
+							var entity models.{{.DbTypeName}}
+							if err := json.Unmarshal(data, &entity); err != nil {
+								return fmt.Errorf("unmarshalling: %w", err)
+							}
 
-						workerout <- {{.TypeName}}CacheIngest{
-							ObjectInfo: info,
-							Entity:     entity,
-							Err: 		nil,
+							if info.Key != {{$filename}}(entity.{{.IdName}}) {
+								zl.Warn().Str("key", info.Key).Msg("skipping object with mismatched filename")
+								continue
+							}
+
+							cacheinit <- {{.TypeName}}CacheIngest{
+								ObjectInfo: info,
+								Entity:     entity,
+							}
 						}
 					}
-				}
+					return nil
+				})
 			}
+			return subgrp.Wait()
+		})
 
+		// Write objects into cache
+		taskGrp.Go(func() error {
+			subgrp, wctx := errgroup.WithContext(wctx)
 			for i := 0; i < NUM_WORKERS; i++ {
-				go worker()
-			}
-			wg.Wait()
-		}()
+				subgrp.Go(func() error {
+					for {
+						select {
+						case <-wctx.Done():
+							return nil
+						case obj, more := <-cacheinit:
+							if !more {
+								return nil
+							}
+							var expiration time.Duration
+							if !obj.Expiration.IsZero() {
+								expiration = obj.Expiration.Sub(time.Now())
+							}
+							if err := c.Put(wctx, obj.Entity, expiration, obj.ETag); err != nil {
+								return fmt.Errorf("cache init: %w", err)
+							}
 
-		// Main control loop: will periodically refresh the cache lock, check
-		// for errors in bucket listing and put objects into the cache.
-		ticker := time.NewTicker(3*time.Second)
-		objectsLoaded = 0
-		main_control_loop:
-		for {
-			select {
-			case <-ticker.C:
-				if err := c.AcquireInitLock(ctx); err != nil {
-					resulterr = err
-					break main_control_loop
-				}
-			case obj, more := <-workerout:
-				if !more {
-					break main_control_loop
-				}
-				if obj.Err != nil {
-					resulterr = obj.Err
-					break main_control_loop
-				}
-				var expiration time.Duration
-				if !obj.Expiration.IsZero() {
-					expiration = obj.Expiration.Sub(time.Now())
-				}
-				if err := c.Put(ctx, obj.Entity, expiration, obj.ETag); err != nil {
-					resulterr = err
-					break main_control_loop
-				}
-				objectsLoaded++
-				if objectsLoaded % 10_000 == 0 {
-					zl.Info().Str("component", "{{$storeName}}").
-						Int("objectsLoaded", objectsLoaded).
-						Msg("initializing cache")
+							loaded := atomic.AddUint32(&objectsLoaded, 1)
+							if loaded % 10_000 == 0 {
+								zl.Info().Str("component", "{{$storeName}}").
+									Uint32("objectsLoaded", loaded).
+									Msg("initializing cache")
 
+							}
+						}
+					}
+				})
+			}
+			return subgrp.Wait()
+		})
+
+		masterGrp, mctx := errgroup.WithContext(ctx)
+		masterGrp.Go(func() error {
+			ticker := time.NewTicker(3*time.Second)
+			defer ticker.Stop()
+
+			taskGrpDone := make(chan error)
+			defer close(taskGrpDone)
+			go func() {
+				taskGrpDone <- taskGrp.Wait()
+			}()
+
+			for {
+				select {
+				case <-ticker.C:
+					if err := c.AcquireInitLock(mctx); err != nil {
+						return fmt.Errorf("cache lock refresh: %w", err)
+					}
+				case err := <-taskGrpDone:
+					return err
 				}
 			}
+		})
+
+
+		if err := masterGrp.Wait(); err != nil {
+			return err
 		}
-		ticker.Stop()
-		close(cacheinit)
 
 		// Only mark cache as initialized if we didn't encounter any error.
-		if resulterr == nil {
-			if err := c.Client.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil {
-				zl.Warn().Str("component", "{{$storeName}}").Msg("could not mark cache as initialized")
-				resulterr = err
-			}
+		if err := c.Client.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil {
+			zl.Warn().Str("component", "{{$storeName}}").Msg("could not mark cache as initialized")
+			return err
 		}
 
-		// returning will cancel the ctx, which will also cancel listing and workers
-		return resulterr
 	}
 
 	//unreachable!
 }
 
 func (c {{$cacheName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}, expiration time.Duration, etag string) error {
+	pipe := c.Client.TxPipeline()
 
 	co := {{.PrivateTypeName}}CacheObject{
 		ETag:   etag,
 		Entity: obj,
+	}
+
+	data, err := json.Marshal(co)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
 	// Fetch the previous version of this object (if there is any)
@@ -450,18 +458,13 @@ func (c {{$cacheName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}, exp
 	}
 
 	// Primary index: {{.IdName}}
-	if err = c.put(ctx, c.Key({{$cacheKey}}ID, obj.{{.IdName}}), co, expiration); err != nil {
-		return err
-	}
+	pipe.Set(ctx, c.Key({{$cacheKey}}ID, obj.{{.IdName}}), data, expiration)
 
 	{{ if .GetAll -}}
 	// Primary index for all objects set: people.v1.all=all
 	// ETag index for all objects set: people.v1.etag.all=all
-	c.Client.SAdd(ctx, c.Key({{$cacheKey}}All, {{$cacheKey}}All), obj.{{$ID}})
-	err = c.Client.Incr(ctx, c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.SAdd(ctx, c.Key({{$cacheKey}}All, {{$cacheKey}}All), obj.{{$ID}})
+	pipe.Incr(ctx, c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All))
 	{{- end }}
 
 	{{if .SecondaryIndexes -}}
@@ -475,16 +478,12 @@ func (c {{$cacheName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}, exp
 	// Optional unique index: {{.Name}}
 	if {{ .Keys | CheckOptional "obj" | Join " && " }} {
 		idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-		if err = c.put(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), co, expiration); err != nil {
-			return err
-		}
+		pipe.Set(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), data, expiration)
 	}
 	{{else -}}
 	// Unique index: {{.Name}}
 	idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-	if err = c.put(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), co, expiration); err != nil {
-		return err
-	}
+	pipe.Set(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), data, expiration)
 	{{end -}}
 	{{end -}}
 	{{end}}
@@ -496,20 +495,14 @@ func (c {{$cacheName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}, exp
 	// Optional set index: {{.Name}}
 	if {{ .Keys | CheckOptional "obj" | Join " && " }} {
 		idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-		c.Client.SAdd(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
-		err := c.Client.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-		if err != nil {
-			return common.NewErrorE(http.StatusInternalServerError, err)
-		}
+		pipe.SAdd(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
+		pipe.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx))
 	}
 	{{else -}}
 	// Set index: {{.Name}}
 	idx = CompoundIndex({{ .Keys | Materialize "obj" | Join ", " }})
-	c.Client.SAdd(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
-	err = c.Client.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.SAdd(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), obj.{{$ID}})
+	pipe.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx))
 	{{end -}}
 	{{end -}}
 	{{end}}
@@ -527,19 +520,13 @@ func (c {{$cacheName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}, exp
 			newNil := !({{ .Keys | CheckOptional "obj" | Join " && " }})
 			if (oldExists && newNil) || (oldExists && !newNil && ({{ .Keys | CompareFields "obj" "orig" " != " | Join " || "}})) {
 				idx := CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
-				err := c.Client.Del(ctx, c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
-				if err != nil {
-					return common.NewErrorE(http.StatusInternalServerError, err)
-				}
+				pipe.Del(ctx, c.Key({{$cacheKey}}{{.Name}}, idx))
 			}
 		}
 		{{- else -}}
 		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " || " }} {
 			idx = CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
-			err := c.Client.Del(ctx, c.Key({{$cacheKey}}{{.Name}}, idx)).Err()
-			if err != nil {
-				return common.NewErrorE(http.StatusInternalServerError, err)
-			}
+			pipe.Del(ctx, c.Key({{$cacheKey}}{{.Name}}, idx))
 		}
 		{{end -}}
 		{{end -}}
@@ -555,25 +542,24 @@ func (c {{$cacheName}}) Put(ctx context.Context, obj models.{{.DbTypeName}}, exp
 			if (oldExists && newNil) || (oldExists && !newNil && ({{ .Keys | CompareFields "obj" "orig" " != " | Join " || "}})) {
 				idx = CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
 				c.Client.SRem(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
-				err := c.Client.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-				if err != nil {
-					return common.NewErrorE(http.StatusInternalServerError, err)
-				}
+				pipe.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx))
 			}
 		}
 		{{- else -}}
 		if {{ .Keys | CompareFields "obj" "orig" " != " | Join " || " }} {
 			idx = CompoundIndex({{ .Keys | Materialize "orig" | Join ", " }})
 			c.Client.SRem(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), orig.{{$ID}})
-			err := c.Client.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-			if err != nil {
-				return common.NewErrorE(http.StatusInternalServerError, err)
-			}
+			pipe.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx))
 		}
 		{{end -}}
 		{{end -}}
 		{{end}}
 	}
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+
 	return nil
 }
 
@@ -725,19 +711,16 @@ func (c *{{$cacheName}}) Delete(ctx context.Context, {{$ID | ToLower}} string) e
 	{{end -}}
 	{{end}}
 
+	// Batch all operations in one transaction
+	pipe := c.Client.TxPipeline()
+
 	// Delete all keys at the same time
-	err = c.Client.Del(ctx, keys...).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.Del(ctx, keys...)
 
 	{{if .GetAll -}}
 	// Remove from all set
-	c.Client.SRem(ctx, c.Key({{$cacheKey}}All, {{$cacheKey}}All), {{$ID | ToLower}})
-	err = c.Client.Incr(ctx, c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All)).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.SRem(ctx, c.Key({{$cacheKey}}All, {{$cacheKey}}All), {{$ID | ToLower}})
+	pipe.Incr(ctx, c.ETagKey({{$cacheKey}}All, {{$cacheKey}}All))
 	{{ end }}
 
 	{{range .SecondaryIndexes -}}
@@ -746,22 +729,20 @@ func (c *{{$cacheName}}) Delete(ctx context.Context, {{$ID | ToLower}} string) e
 	{{ if .Optional -}}
 	if {{ .Keys | CheckOptional "o" | Join " && " }} {
 		idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
-		c.Client.SRem(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
-		err := c.Client.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-		if err != nil {
-			return common.NewErrorE(http.StatusInternalServerError, err)
-		}
+		pipe.SRem(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
+		pipe.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx))
 	}
 	{{- else -}}
 	idx = CompoundIndex({{ .Keys | Materialize "o" | Join ", " }})
-	c.Client.SRem(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
-	err = c.Client.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx)).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.SRem(ctx, c.Key({{$cacheKey}}{{.Name}}, idx), o.{{$ID}})
+	pipe.Incr(ctx, c.ETagKey({{$cacheKey}}{{.Name}}, idx))
 	{{end -}}
 	{{end -}}
 	{{end}}
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
 
 	return nil
 }
