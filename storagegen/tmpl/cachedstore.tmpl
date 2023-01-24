@@ -216,7 +216,7 @@ func (s *{{$storeName}}) put(ctx context.Context, obj models.{{.DbTypeName}}) er
 
 	var expiration time.Duration
 	if !info.Expiration.IsZero() {
-		expiration = info.Expiration.Sub(time.Now())
+		expiration = time.Until(info.Expiration)
 	}
 	return s.cache.Put(ctx, obj, expiration, info.ETag)
 }
@@ -379,7 +379,7 @@ func (c *{{$cacheName}}) Init(ctx context.Context, backend common.LingioStore) (
 							}
 							var expiration time.Duration
 							if !obj.Expiration.IsZero() {
-								expiration = obj.Expiration.Sub(time.Now())
+								expiration = time.Until(obj.Expiration)
 							}
 							if err := c.Put(wctx, obj.Entity, expiration, obj.ETag); err != nil {
 								return fmt.Errorf("cache init: %w", err)
