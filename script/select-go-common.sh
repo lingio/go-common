@@ -13,12 +13,17 @@ else
 	WANTED_VERSION="v1.12.4"
 fi
 
-if [[ "${WANTED_VERSION}" != "${CURRENT_VERSION}" ]]; then
-  >&2 echo "Upgrading go-common ${CURRENT_VERSION} --> ${WANTED_VERSION}"
-  >&2 go get "github.com/lingio/go-common@${WANTED_VERSION}"
-  >&2 go mod tidy
-  >&2 git add go.mod go.sum
-  >&2 git commit -m "autobump go-common to ${WANTED_VERSION}"
+if go run /tmp/semvercomp.go ${WANTED_VERSION} ${CURRENT_VERSION}; then
+  # only upgrade
+  if [[ "${WANTED_VERSION}" != "${CURRENT_VERSION}" ]]; then
+    >&2 echo "Upgrading go-common ${CURRENT_VERSION} --> ${WANTED_VERSION}"
+    >&2 go get "github.com/lingio/go-common@${WANTED_VERSION}"
+    >&2 go mod tidy
+    >&2 git add go.mod go.sum
+    >&2 git commit -m "autobump go-common to ${WANTED_VERSION}"
+  fi
+else
+  WANTED_VERSION=${CURRENT_VERSION}
 fi
 
 echo $WANTED_VERSION
