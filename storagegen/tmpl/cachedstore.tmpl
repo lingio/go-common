@@ -102,8 +102,28 @@ func New{{$storeName}}(ctx context.Context, mc *minio.Client, cache {{.TypeName}
 		return nil, fmt.Errorf("creating encrypted store: %w", err)
 	}
 
+	return new{{$storeName}}(ctx, encryptedStore, cache)
+}
+
+// NewInsecure{{$storeName}} configures a new store and initializes the provided cache if required.
+func NewInsecure{{$storeName}}(ctx context.Context, mc *minio.Client, cache {{.TypeName}}Cache, serviceKey string) (*{{$storeName}}, error) {
+	// DefaultOjbectStoreConfig || deserialize
+	objectStore, err := common.NewObjectStore(mc, "{{.BucketName}}", {{$storeName}}Config)
+	if err != nil {
+		return nil, fmt.Errorf("creating object store: %w", err)
+	}
+
+	encryptedStore, err := common.NewInsecureEncryptedStore(objectStore, serviceKey)
+	if err != nil {
+		return nil, fmt.Errorf("creating encrypted store: %w", err)
+	}
+
+	return new{{$storeName}}(ctx, encryptedStore, cache)
+}
+
+func new{{$storeName}}(ctx context.Context, backend common.LingioStore, cache {{.TypeName}}Cache) (*{{$storeName}}, error) {
 	db := &{{$storeName}}{
-		backend: encryptedStore,
+		backend: backend,
 		cache:   cache,
 		ready:   0,
 	}
@@ -116,7 +136,7 @@ func New{{$storeName}}(ctx context.Context, mc *minio.Client, cache {{.TypeName}
 	common.RegisterRedisOnConnectHook(func (ctx context.Context) {
 		if err := cache.Init(ctx, db.backend); err != nil {
 			zl.Error().Err(err).
-				Str("component", serviceKey).
+				Str("component", "{{$storeName}}").
 				Msg("cache re-initialization failed")
 		}
 	})
