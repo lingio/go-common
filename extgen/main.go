@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -10,6 +11,11 @@ import (
 
 	"github.com/lingio/go-common/extgen/gen"
 	zl "github.com/rs/zerolog/log"
+)
+
+var (
+	//go:embed tmpl
+	templateFS embed.FS
 )
 
 /*
@@ -32,7 +38,7 @@ func main() {
 	modelFile := fmt.Sprintf("%s/models/model.gen.go", srcDir)
 	copyModelFile(modelFile, targetDir, path.Base(targetDir))
 
-	gen.GenerateFromSpec(extConfig, spec, targetDir)
+	gen.GenerateFromSpec(templateFS, extConfig, spec, targetDir)
 	copyVersionFile(srcDir, targetDir)
 }
 

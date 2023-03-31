@@ -3,6 +3,7 @@ package gen
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"strings"
 	"text/template"
@@ -40,9 +41,9 @@ func Postfix(f Func) string {
 	return postfix
 }
 
-func GenerateFromSpec(es ExtSpec, specFilename string, outdir string) {
+func GenerateFromSpec(tfs fs.FS, es ExtSpec, specFilename string, outdir string) {
 	b := make([]byte, 0)
-	b = append(b, generateBeginning(es.Package)...)
+	b = append(b, generateBeginning(tfs, es.Package)...)
 	funcMap := ReadSpec(specFilename)
 	for _, fs := range es.OpenOperations {
 		f, ok := funcMap[fs]
@@ -50,7 +51,7 @@ func GenerateFromSpec(es ExtSpec, specFilename string, outdir string) {
 			zl.Fatal().Str("operationID", fs).Msg("operationID not found")
 		}
 		if !f.TmplParams.TokenAuth && !f.TmplParams.ApiKeyAuth {
-			b = append(b, generate(fmt.Sprintf("tmpl/%s/%s%s.tmpl", "none", strings.ToLower(f.HttpMethod), Postfix(f)), f.TmplParams)...)
+			b = append(b, generate(tfs, fmt.Sprintf("tmpl/%s/%s%s.tmpl", "none", strings.ToLower(f.HttpMethod), Postfix(f)), f.TmplParams)...)
 		} else {
 			zl.Fatal().Bool("tokenAuth", f.TmplParams.TokenAuth).Bool("apiKeyAuth", f.TmplParams.ApiKeyAuth).Msg("auth mismatch, expected none")
 		}
@@ -61,7 +62,7 @@ func GenerateFromSpec(es ExtSpec, specFilename string, outdir string) {
 			zl.Fatal().Str("operationID", fs).Msg("operationID not found")
 		}
 		if f.TmplParams.TokenAuth {
-			b = append(b, generate(fmt.Sprintf("tmpl/%s/%s%s.tmpl", "token", strings.ToLower(f.HttpMethod), Postfix(f)), f.TmplParams)...)
+			b = append(b, generate(tfs, fmt.Sprintf("tmpl/%s/%s%s.tmpl", "token", strings.ToLower(f.HttpMethod), Postfix(f)), f.TmplParams)...)
 		} else {
 			zl.Fatal().Bool("tokenAuth", f.TmplParams.TokenAuth).Bool("apiKeyAuth", f.TmplParams.ApiKeyAuth).Msg("auth mismatch, expected token")
 		}
@@ -72,7 +73,7 @@ func GenerateFromSpec(es ExtSpec, specFilename string, outdir string) {
 			zl.Fatal().Str("operationID", fs).Msg("operationID not found")
 		}
 		if f.TmplParams.ApiKeyAuth {
-			b = append(b, generate(fmt.Sprintf("tmpl/%s/%s%s.tmpl", "apikey", strings.ToLower(f.HttpMethod), Postfix(f)), f.TmplParams)...)
+			b = append(b, generate(tfs, fmt.Sprintf("tmpl/%s/%s%s.tmpl", "apikey", strings.ToLower(f.HttpMethod), Postfix(f)), f.TmplParams)...)
 		} else {
 			zl.Fatal().Bool("tokenAuth", f.TmplParams.TokenAuth).Bool("apiKeyAuth", f.TmplParams.ApiKeyAuth).Msg("auth mismatch, expected token")
 		}
@@ -83,9 +84,9 @@ func GenerateFromSpec(es ExtSpec, specFilename string, outdir string) {
 	}
 }
 
-func GenerateAll(funcs []Func, outdir string, packageName string, clientFilename string) {
+func GenerateAll(tfs fs.FS, funcs []Func, outdir string, packageName string, clientFilename string) {
 	b := make([]byte, 0)
-	b = append(b, generateBeginning(packageName)...)
+	b = append(b, generateBeginning(tfs, packageName)...)
 
 	for _, f := range funcs {
 		postfix := ""
@@ -96,13 +97,13 @@ func GenerateAll(funcs []Func, outdir string, packageName string, clientFilename
 			postfix += "NoBody"
 		}
 		if f.TmplParams.TokenAuth {
-			b = append(b, generate(fmt.Sprintf("tmpl/%s/%s%s.tmpl", "token", strings.ToLower(f.HttpMethod), postfix), f.TmplParams)...)
+			b = append(b, generate(tfs, fmt.Sprintf("tmpl/%s/%s%s.tmpl", "token", strings.ToLower(f.HttpMethod), postfix), f.TmplParams)...)
 		}
 		if f.TmplParams.ApiKeyAuth {
-			b = append(b, generate(fmt.Sprintf("tmpl/%s/%s%s.tmpl", "apikey", strings.ToLower(f.HttpMethod), postfix), f.TmplParams)...)
+			b = append(b, generate(tfs, fmt.Sprintf("tmpl/%s/%s%s.tmpl", "apikey", strings.ToLower(f.HttpMethod), postfix), f.TmplParams)...)
 		}
 		if !f.TmplParams.TokenAuth && !f.TmplParams.ApiKeyAuth {
-			b = append(b, generate(fmt.Sprintf("tmpl/%s/%s%s.tmpl", "none", strings.ToLower(f.HttpMethod), postfix), f.TmplParams)...)
+			b = append(b, generate(tfs, fmt.Sprintf("tmpl/%s/%s%s.tmpl", "none", strings.ToLower(f.HttpMethod), postfix), f.TmplParams)...)
 		}
 	}
 	err := ioutil.WriteFile(fmt.Sprintf("%s/%s/%s", outdir, packageName, clientFilename), b, 0644)
@@ -111,15 +112,15 @@ func GenerateAll(funcs []Func, outdir string, packageName string, clientFilename
 	}
 }
 
-func generateBeginning(packageName string) []byte {
+func generateBeginning(tfs fs.FS, packageName string) []byte {
 	tmplParams := TmplParams{
 		PackageName: packageName,
 	}
-	return generate("tmpl/client.tmpl", tmplParams)
+	return generate(tfs, "tmpl/client.tmpl", tmplParams)
 }
 
-func generate(tmplFilename string, params TmplParams) []byte {
-	tpl, err := template.ParseFiles(tmplFilename, "tmpl/parseJson.tmpl", "tmpl/beginning.tmpl", "tmpl/client.tmpl")
+func generate(fs fs.FS, tmplFilename string, params TmplParams) []byte {
+	tpl, err := template.ParseFS(fs, tmplFilename, "tmpl/parseJson.tmpl", "tmpl/beginning.tmpl", "tmpl/client.tmpl")
 	if err != nil {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to load message template")
 	} else if tpl == nil {

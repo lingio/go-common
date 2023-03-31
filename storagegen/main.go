@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"os"
@@ -16,6 +18,11 @@ import (
 	zl "github.com/rs/zerolog/log"
 )
 
+var (
+	//go:embed tmpl
+	templateFS embed.FS
+)
+
 func main() {
 	if len(os.Args) < 2 {
 		zl.Fatal().Msg("Usage: go run main.go <spec.json>")
@@ -24,10 +31,10 @@ func main() {
 	specFilepath := os.Args[1]
 	spec := common.ReadStorageSpec(specFilepath)
 	dir := path.Dir(specFilepath)
-	generateStorage(dir, spec)
+	generateStorage(templateFS, dir, spec)
 }
 
-func generateStorage(dir string, spec common.ServiceStorageSpec) {
+func generateStorage(fs fs.FS, dir string, spec common.ServiceStorageSpec) {
 	defaultObjectStoreConfig := common.ObjectStoreConfig{
 		ContentType:        "application/json",
 		ContentDisposition: "",
@@ -170,7 +177,7 @@ func generate(tmplFilename string, params interface{}) []byte {
 	}
 
 	main := path.Base(tmplFilename)
-	tpl, err := template.New(main).Funcs(funcMap).ParseFiles(tmplFilename)
+	tpl, err := template.New(main).Funcs(funcMap).ParseFS(templateFS, tmplFilename)
 	if err != nil {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to load template")
 	} else if tpl == nil {
