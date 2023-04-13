@@ -22,35 +22,42 @@ type Env struct {
 
 func SetupEnv() *Env {
 	env := os.Getenv("ENV")
-
-	e := &Env{
-		EnvName:    env,
-		ProjectID:  "lingio-stage",
-		ConfigFile: "local",
+	switch ParseEnv() {
+	case EnvDevelop:
+		return &Env{
+			EnvName:    env,
+			ProjectID:  "lingio-stage",
+			ConfigFile: env,
+		}
+	case EnvStaging:
+		return &Env{
+			EnvName:    env,
+			ProjectID:  "lingio-stage",
+			ConfigFile: env,
+		}
+	case EnvProduction:
+		return &Env{
+			EnvName:    env,
+			ProjectID:  "lingio-prod",
+			ConfigFile: env,
+		}
 	}
-
-	// stage, stage-glesys, stage-gcp
-	if strings.HasPrefix(env, "stage") {
-		e.ProjectID = "lingio-stage"
-		e.ConfigFile = "stage"
-	}
-
-	// prod, production, production-glesys
-	if strings.HasPrefix(env, "prod") {
-		e.ProjectID = "lingio-prod"
-		e.ConfigFile = "production"
-	}
-	return e
+	panic("SetupEnv: unknown env: " + env)
 }
 
 func ParseEnv() Environment {
 	env := os.Getenv("ENV")
-	if env == "prod" || env == "production" {
+
+	// prod, production, production-glesys
+	if strings.HasPrefix(env, "prod") {
 		return EnvProduction
 	}
-	if env == "stage" || env == "staging" {
+
+	// stage, stage-glesys, stage-gcp
+	if strings.HasPrefix(env, "stage") {
 		return EnvStaging
 	}
+
 	if strings.HasPrefix(env, "local") {
 		return EnvDevelop
 	}
