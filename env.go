@@ -29,11 +29,14 @@ func SetupEnv() *Env {
 		ConfigFile: "local",
 	}
 
-	if env == "stage" {
+	// stage, stage-glesys, stage-gcp
+	if strings.HasPrefix(env, "stage") {
 		e.ProjectID = "lingio-stage"
 		e.ConfigFile = "stage"
 	}
-	if env == "prod" || env == "production" {
+
+	// prod, production, production-glesys
+	if strings.HasPrefix(env, "prod") {
 		e.ProjectID = "lingio-prod"
 		e.ConfigFile = "production"
 	}
