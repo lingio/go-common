@@ -1,23 +1,14 @@
-go-common
+# go-common
 
-## redis cache
-
-```golang
-// Basic client: connect to redis addr directly
-// redisAddr = ":6769", masterName "", serviceDNS = ""
-// Failover client: lookup sentinels and create failover client
-// redisAddr = "", masterName != "", serviceDNS != ""
-redisClient, err := common.SetupRedisClient(redisAddr, masterName, serviceDNS)
-if err != nil {
-  log.Fatalln(err)
-}
-redisCache := common.NewRedisCache(redisClient, "x-cache-it", "v2")
-```
+- Monitoring [common.InitMonitoring(svcName, monitorCfg)](trace.go#L56).
+  - Traces: otel http sink, gcp cloud trace
 
 ## storagegen
 
-1. `cd storagegen`
-2. `go run . ../../partner-service/storage/spec.json`
+```bash
+go install github.com/lingio/storagegen
+storagegen path/to/service/storage/spec.json
+```
 
 **spec.json**:
 ```javascript
@@ -65,7 +56,6 @@ redisCache := common.NewRedisCache(redisClient, "x-cache-it", "v2")
   ]
 }
 ```
-
 
 ## scripts
 
