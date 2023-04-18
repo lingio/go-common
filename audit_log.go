@@ -23,16 +23,6 @@ const (
 	authKey    = auditLogKeyType("authToken")
 )
 
-func auditLogFields() []auditLogKeyType {
-	return []auditLogKeyType{
-		requestKey,
-		objectKey,
-		bucketKey,
-		actionKey,
-		authKey,
-	}
-}
-
 func FromEcho(e echo.Context) context.Context {
 	// use the original context as parent so we support echo middleware
 	ctx := e.Request().Context()
@@ -77,14 +67,12 @@ func AuthTokenFrom(ctx context.Context) string {
 // LogAuditEvent outputs the provided app context
 func LogAuditEvent(ctx context.Context) {
 	evt := auditLogger.Info()
-	for _, k := range auditLogFields() {
-		// Don't print credentials.
-		if k == authKey {
-			continue
-		}
-
-		writeContextFieldToLogEvent(ctx, k, evt)
-	}
+	writeContextFieldToLogEvent(ctx, requestKey, evt)
+	writeContextFieldToLogEvent(ctx, objectKey, evt)
+	writeContextFieldToLogEvent(ctx, bucketKey, evt)
+	writeContextFieldToLogEvent(ctx, actionKey, evt)
+	// Don't print credentials.
+	// writeContextFieldToLogEvent(ctx, authKey, evt)
 	evt.Msg("audit log event")
 }
 
