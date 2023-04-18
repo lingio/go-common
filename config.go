@@ -18,5 +18,8 @@ type RedisConfig struct {
 }
 
 type MonitorConfig struct {
-	TempoHost string
+	TempoHost  string
+	CloudTrace struct {
+		Enabled bool
+	}
 }
