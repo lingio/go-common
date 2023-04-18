@@ -27,8 +27,7 @@ func FromEcho(e echo.Context) context.Context {
 	// use the original context as parent so we support echo middleware
 	ctx := e.Request().Context()
 
-	// TODO(Axel): Generate request ID
-	// ctx = context.WithValue(ctx, requestKey, snowflake.Generate())
+	ctx = context.WithValue(ctx, requestKey, e.Response().Header().Get(echo.HeaderXRequestID))
 
 	// Extract JWT token. No need to verify it, that is done elsewhere.
 	// We want to include the full token so we get all claims in the audit log.
