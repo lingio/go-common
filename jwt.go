@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 )
 
@@ -97,7 +97,7 @@ func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, user
 		} else if role == "hr" {
 			role = "gm"
 		}
-		
+
 		if role == nil {
 			return NewError(http.StatusUnauthorized).Str("partnerID", partnerID).Str("userID", userID).Msg("user has no role defined in token")
 		}
