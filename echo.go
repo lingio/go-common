@@ -164,7 +164,7 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 
 	// Set up request validation
 	options := &middleware.Options{
-		Options: *openapi3filter.DefaultOptions,
+		Options: openapi3filter.Options{},
 		Skipper: combineSkippers(skipOnMetricRequest, skipOpsRequest),
 	}
 	options.Options.AuthenticationFunc = func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
