@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -181,8 +180,9 @@ func executeReq(req *http.Request) ([]byte, error) {
 }
 
 // ShouldRetry returns whether a request can be retried:
-//    err     = request error
-//    attempt = 0-based retry counter
+//
+//	err     = request error
+//	attempt = 0-based retry counter
 type ShouldRetry func(err error, attempt int) bool
 
 // Backoff returns the time to wait for request retry attempt.
@@ -207,9 +207,8 @@ func executeReqWithRetry(req *http.Request, shouldRetry ShouldRetry, backoff Bac
 }
 
 func setBearerToken(req *http.Request, bearerToken string) {
-	bearerHeader := fmt.Sprintf("Bearer %s", bearerToken)
 	if bearerToken != "" {
-		req.Header.Add("Authorization", bearerHeader)
+		req.Header.Add("Authorization", "Bearer "+bearerToken)
 	}
 }
 
@@ -230,9 +229,13 @@ func createBodyBuffer(body interface{}) (*bytes.Buffer, error) {
 }
 
 // exponentialBackoff returns a backoff function:
-//   y = 2^attempt (seconds)
+//
+//	y = 2^attempt (seconds)
+//
 // where
+//
 //	attempt = min(attempt, 6)
+//
 // which implies that max wait is 64s
 func exponentialBackoff(attempt int) time.Duration {
 	if attempt > 6 {
