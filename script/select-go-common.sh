@@ -2,18 +2,20 @@
 
 set -euo pipefail
 
+go install github.com/lingio/script/semvercomp@latest
+
 CURRENT_VERSION=$(go list -m -json all | \
   jq -r 'select(.Path == "github.com/lingio/go-common") | .Version')
 
-if go run /tmp/semvercomp.go ${CURRENT_VERSION} "v1.17.0"; then
- 	WANTED_VERSION=$(curl -s https://api.github.com/repos/lingio/go-common/releases/latest | jq -r .name)
-elif go run /tmp/semvercomp.go ${CURRENT_VERSION} "v1.13.0"; then
+if semvercomp ${CURRENT_VERSION} "v1.17.0"; then
+ 	WANTED_VERSION=$(curl -s https://api.github.com/repos/lingio/go-common/releases/latest | jq -r .tag_name)
+elif semvercomp ${CURRENT_VERSION} "v1.13.0"; then
  	WANTED_VERSION="v1.16.3"
 else
 	WANTED_VERSION="v1.12.4"
 fi
 
-if go run /tmp/semvercomp.go ${WANTED_VERSION} ${CURRENT_VERSION}; then
+if semvercomp ${WANTED_VERSION} ${CURRENT_VERSION}; then
   # only upgrade
   if [[ "${WANTED_VERSION}" != "${CURRENT_VERSION}" ]]; then
     >&2 echo "Upgrading go-common ${CURRENT_VERSION} --> ${WANTED_VERSION}"
