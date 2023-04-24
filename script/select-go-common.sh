@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-go install github.com/lingio/script/semvercomp@latest
+go install github.com/lingio/go-common/script/semvercomp@latest
 
 CURRENT_VERSION=$(go list -m -json all | \
   jq -r 'select(.Path == "github.com/lingio/go-common") | .Version')
