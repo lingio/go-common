@@ -1,5 +1,11 @@
 package common
 
+import (
+	"os"
+
+	zl "github.com/rs/zerolog/log"
+)
+
 // MinioConfig describes the required fields to setup a s3 minio client.
 type MinioConfig struct {
 	Host        string
@@ -22,4 +28,13 @@ type MonitorConfig struct {
 	CloudTrace struct {
 		Enabled bool
 	}
+}
+
+func MustGetenv(key string) string {
+	val, varok := os.LookupEnv(key)
+	if !varok {
+		zl.Fatal().Msg("missing env. variable " + key)
+		// unreachable!
+	}
+	return val
 }
