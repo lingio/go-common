@@ -67,11 +67,11 @@ func DecodeSpannerStructFields(
 		}
 
 		var data []byte
-		switch sfv.Interface().(type) {
+		switch v := sfv.Interface().(type) {
 		case string:
-			data = []byte(sfv.Interface().(string))
+			data = []byte(v)
 		case *string:
-			data = []byte(*sfv.Interface().(*string))
+			data = []byte(*v)
 		default:
 			return fmt.Errorf("unknown type %T -> %T", sfv.Interface(), tfv.Interface())
 		}
