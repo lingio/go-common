@@ -7,6 +7,19 @@ import (
 	"strings"
 )
 
+// VisibleStructFieldNames returns a list of all names of accessible fields.
+func VisibleStructFieldNames(s any) []string {
+	var (
+		t, _   = typeAndValueOf(s)
+		fields = reflect.VisibleFields(t)
+		names  = make([]string, len(fields))
+	)
+	for i, f := range fields {
+		names[i] = f.Name
+	}
+	return names
+}
+
 // DecodeSpannerStructFields copies all visible fields from source to target by
 // struct field name. Fields will be copied using reflection. If field in
 // source has spanner tag containing `asjson`, the target field will be
