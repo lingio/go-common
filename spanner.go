@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"cloud.google.com/go/spanner"
 )
 
 // VisibleStructFieldNames returns a list of all names of accessible fields.
 func VisibleStructFieldNames(s any) []string {
 	var (
-		t, _   = typeAndValueOf(s)
+		t, _   = typeAndValueOfStruct(s)
 		fields = reflect.VisibleFields(t)
 		names  = make([]string, len(fields))
 	)
@@ -36,8 +38,8 @@ func DecodeSpannerStructFields(
 	target any,
 ) error {
 	var (
-		sourceType, sourceValue = typeAndValueOf(source)
-		targetType, targetValue = typeAndValueOf(target)
+		sourceType, sourceValue = typeAndValueOfStruct(source)
+		targetType, targetValue = typeAndValueOfStruct(target)
 	)
 
 	var (
@@ -60,24 +62,59 @@ func DecodeSpannerStructFields(
 		}
 
 		tfv := targetValue.FieldByIndex(tf.Index)
-		if !strings.Contains(sf.Tag.Get("spanner"), "asjson") {
-			// just try to copy the value directly
-			tfv.Set(sfv)
+		if strings.Contains(sf.Tag.Get("spanner"), "asjson") {
+			var data []byte
+			switch v := sfv.Interface().(type) {
+			case string:
+				data = []byte(v)
+			case spanner.NullString:
+				if !v.Valid {
+					continue
+				}
+				data = []byte(v.StringVal)
+			default:
+				return fmt.Errorf("unknown type %T -> %T", sfv.Interface(), tfv.Interface())
+			}
+
+			if err := json.Unmarshal(data, tfv.Addr().Interface()); err != nil {
+				return err
+			}
 			continue
 		}
 
-		var data []byte
 		switch v := sfv.Interface().(type) {
-		case string:
-			data = []byte(v)
-		case *string:
-			data = []byte(*v)
+		case int64, bool, string:
+			tfv.Set(sfv.Convert(tf.Type))
+		case spanner.NullString:
+			if !v.Valid {
+				continue
+			}
+			tfv.Set(reflect.ValueOf(&v.StringVal))
+		case spanner.NullFloat64:
+			if !v.Valid {
+				continue
+			}
+			tfv.Set(reflect.ValueOf(&v.Float64))
+		case spanner.NullBool:
+			if !v.Valid {
+				continue
+			}
+			tfv.Set(reflect.ValueOf(&v.Bool))
+		case spanner.NullInt64:
+			if !v.Valid {
+				continue
+			}
+			// assume tf.Type is a pointer to a value
+			// tf.Type.Elem() is the type being pointed to
+			valueType := tf.Type.Elem()
+			int64AsValueType := reflect.ValueOf(v.Int64).Convert(valueType)
+			// reflect.New(x) return type is PointerTo(x)
+			// tfv.Elem() is the pointed-at value
+			tfv.Set(reflect.New(valueType))
+			tfv.Elem().Set(int64AsValueType)
 		default:
 			return fmt.Errorf("unknown type %T -> %T", sfv.Interface(), tfv.Interface())
-		}
 
-		if err := json.Unmarshal(data, tfv.Addr().Interface()); err != nil {
-			return err
 		}
 	}
 
@@ -110,10 +147,9 @@ func EncodeSpannerStructFields(
 	target any,
 ) error {
 	var (
-		sourceType, sourceValue = typeAndValueOf(source)
-		targetType, targetValue = typeAndValueOf(target)
+		sourceType, sourceValue = typeAndValueOfStruct(source)
+		targetType, targetValue = typeAndValueOfStruct(target)
 	)
-
 	var (
 		sourceFields = reflect.VisibleFields(sourceType)
 		targetFields = reflect.VisibleFields(targetType)
@@ -125,52 +161,80 @@ func EncodeSpannerStructFields(
 			continue
 		}
 
-		var tf = findStructFieldByName(targetFields, sf.Name)
+		tf := findStructFieldByName(targetFields, sf.Name)
 
 		// skip if target doesnt have field
-		if tf.Type.Kind() == reflect.Invalid {
+		if tf.Type == nil || tf.Type.Kind() == reflect.Invalid {
 			continue
 		}
 
 		tfv := targetValue.FieldByIndex(tf.Index)
 
-		fmt.Println(tf.Name, sfv.Kind(), "->", tfv.Kind())
-		if !strings.Contains(tf.Tag.Get("spanner"), "asjson") {
-			// just try to copy the value directly
-			tfv.Set(sfv)
+		// json encode path
+		if strings.Contains(tf.Tag.Get("spanner"), "asjson") {
+			data, err := json.Marshal(sfv.Interface())
+			if err != nil {
+				return err
+			}
+
+			strdata := string(data)
+			switch tfv.Interface().(type) {
+			case string:
+				tfv.Set(reflect.ValueOf(strdata))
+			case spanner.NullString:
+				// note: the zero value of NullXxx is null so only write if valid
+				tfv.Set(reflect.ValueOf(spanner.NullString{
+					StringVal: strdata,
+					Valid:     true,
+				}))
+			default:
+				return fmt.Errorf("cannot store type %T -> %T", sfv.Interface(), tfv.Interface())
+			}
 			continue
 		}
 
-		data, err := json.Marshal(sfv.Interface())
-		if err != nil {
-			return err
-		}
-
-		strdata := string(data)
-		switch tfv.Interface().(type) {
-		case string:
-			tfv.Set(reflect.ValueOf(strdata))
-			continue
+		// value copy path, with null wrapping
+		switch v := sfv.Interface().(type) {
+		case int, int32, bool, string, int64, float64:
+			tfv.Set(sfv.Convert(tfv.Type()))
+		case *bool:
+			tfv.Set(reflect.ValueOf(spanner.NullBool{
+				Bool:  *v,
+				Valid: true,
+			}))
 		case *string:
-			tfv.Set(reflect.ValueOf(&strdata))
-			continue
+			tfv.Set(reflect.ValueOf(spanner.NullString{
+				StringVal: *v,
+				Valid:     true,
+			}))
+		case *int:
+			tfv.Set(reflect.ValueOf(spanner.NullInt64{
+				Int64: int64(*v),
+				Valid: true,
+			}))
+		case *int64:
+			tfv.Set(reflect.ValueOf(spanner.NullInt64{
+				Int64: *v,
+				Valid: true,
+			}))
+		case *float64:
+			tfv.Set(reflect.ValueOf(spanner.NullFloat64{
+				Float64: *v,
+				Valid:   true,
+			}))
+		default:
+			return fmt.Errorf("cannot copy type %T -> %T", sfv.Interface(), tfv.Interface())
 		}
-
-		return fmt.Errorf("unknown type %T -> %T", sfv.Interface(), tfv.Interface())
 	}
 	return nil
 }
 
-func typeAndValueOf(x any) (reflect.Type, reflect.Value) {
-	var (
-		t = reflect.TypeOf(x)
-		v = reflect.ValueOf(x)
-	)
-	for t.Kind() == reflect.Pointer {
-		t = t.Elem()
+func typeAndValueOfStruct(x any) (reflect.Type, reflect.Value) {
+	v := reflect.ValueOf(x)
+	for v.Kind() != reflect.Struct {
 		v = v.Elem()
 	}
-	return t, v
+	return v.Type(), v
 }
 
 func findStructFieldByName(fields []reflect.StructField, name string) reflect.StructField {
