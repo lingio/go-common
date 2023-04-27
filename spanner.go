@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	"cloud.google.com/go/spanner"
@@ -25,7 +24,7 @@ func VisibleStructFieldNames(s any) []string {
 
 // DecodeSpannerStructFields copies all visible fields from source to target by
 // struct field name. Fields will be copied using reflection. If field in
-// source has spanner tag containing `asjson`, the target field will be
+// source has spannerType tag containing `jsonstring`, the target field will be
 // unmarshalled as json first.
 //
 //	var a User
@@ -63,7 +62,7 @@ func DecodeSpannerStructFields(
 		}
 
 		tfv := targetValue.FieldByIndex(tf.Index)
-		if strings.Contains(sf.Tag.Get("spanner"), "asjson") {
+		if sf.Tag.Get("spannerType") == "jsonstring" {
 			var data []byte
 			switch v := sfv.Interface().(type) {
 			case string:
@@ -129,7 +128,7 @@ func DecodeSpannerStructFields(
 
 // EncodeSpannerStructFields copies all visible fields from source to target by
 // struct field name. Fields will be copied using reflection. If field in
-// target has spanner tag containing `asjson`, the source field will be
+// target has spannerType tag containing `jsonstring`, the source field will be
 // encoded as json first. The resulting data will be set as either `*string`
 // or `string`, depending on the target field type.
 //
@@ -140,7 +139,7 @@ func DecodeSpannerStructFields(
 //
 //	type DbUser struct {
 //	   Age int
-//	   Inventory string `spanner:"inventory,asjson"`
+//	   Inventory string `spannerType:"jsonstring"`
 //	}
 //
 //	// This will copy `Age` and `Inventory` fields.
@@ -177,7 +176,7 @@ func EncodeSpannerStructFields(
 		tfv := targetValue.FieldByIndex(tf.Index)
 
 		// json encode path
-		if strings.Contains(tf.Tag.Get("spanner"), "asjson") {
+		if tf.Tag.Get("spannerType") == "jsonstring" {
 			data, err := json.Marshal(sfv.Interface())
 			if err != nil {
 				return err

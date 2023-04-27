@@ -83,12 +83,12 @@ func TestEncodeSpannerStructFields(t *testing.T) {
 			target: &struct {
 				S string
 				X int64
-				M string `spanner:"M,asjson"`
+				M string `spannerType:"jsonstring"`
 			}{},
 			wanted: &struct {
 				S string
 				X int64
-				M string `spanner:"M,asjson"`
+				M string `spannerType:"jsonstring"`
 			}{"X", 100, "{\"COMPLEX\":{\"SUBKEY\":99},\"SECRET\":\"42\"}"},
 		},
 	}
