@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/spanner"
 )
@@ -57,7 +58,7 @@ func DecodeSpannerStructFields(
 		var tf = findStructFieldByName(targetFields, sf.Name)
 
 		// skip if target doesnt have field
-		if tf.Type.Kind() == reflect.Invalid {
+		if tf.Type == nil || tf.Type.Kind() == reflect.Invalid {
 			continue
 		}
 
@@ -83,8 +84,13 @@ func DecodeSpannerStructFields(
 		}
 
 		switch v := sfv.Interface().(type) {
-		case int64, bool, string:
+		case int64, bool, string, time.Time:
 			tfv.Set(sfv.Convert(tf.Type))
+		case spanner.NullTime:
+			if !v.Valid {
+				continue
+			}
+			tfv.Set(reflect.ValueOf(&v.Time))
 		case spanner.NullString:
 			if !v.Valid {
 				continue
@@ -195,8 +201,13 @@ func EncodeSpannerStructFields(
 
 		// value copy path, with null wrapping
 		switch v := sfv.Interface().(type) {
-		case int, int32, bool, string, int64, float64:
+		case int, int32, bool, string, int64, float64, time.Time:
 			tfv.Set(sfv.Convert(tfv.Type()))
+		case *time.Time:
+			tfv.Set(reflect.ValueOf(spanner.NullTime{
+				Time:  *v,
+				Valid: true,
+			}))
 		case *bool:
 			tfv.Set(reflect.ValueOf(spanner.NullBool{
 				Bool:  *v,
