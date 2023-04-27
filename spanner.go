@@ -9,15 +9,24 @@ import (
 	"cloud.google.com/go/spanner"
 )
 
-// VisibleStructFieldNames returns a list of all names of accessible fields.
-func VisibleStructFieldNames(s any) []string {
+// SpannerStructFieldNames returns a list with names of all struct fields.
+// Fields with spanner tag value "-" will be ignored, any other tag value
+// will be considered the new field name.
+func SpannerStructFieldNames(s any) []string {
 	var (
-		t, _   = typeAndValueOfStruct(s)
-		fields = reflect.VisibleFields(t)
-		names  = make([]string, len(fields))
+		t, _  = typeAndValueOfStruct(s)
+		n     = t.NumField()
+		names = make([]string, 0, n)
 	)
-	for i, f := range fields {
-		names[i] = f.Name
+	for i := 0; i < n; i++ {
+		f := t.Field(i)
+		if tag := f.Tag.Get("spanner"); tag == "-" {
+			continue
+		} else if tag != "" {
+			names = append(names, tag)
+		} else {
+			names = append(names, f.Name)
+		}
 	}
 	return names
 }
