@@ -1,6 +1,6 @@
 module github.com/lingio/go-common
 
-go 1.18
+go 1.20
 
 require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.13.1

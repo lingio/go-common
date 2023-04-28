@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -64,27 +65,9 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 
 	// Set up a basic Echo router and its middlewares
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
-		if lerr, ok := err.(*Error); ok {
-			err := lerr // shadowing param err
-
-			// best-effort attempt at finding the first parent with a message
-			// if we don't have an error message in the provided error.
-			for err.Message == "" {
-				le := err.Unwrap()
-				if le == nil {
-					break
-				}
-
-				if le, ok := le.(*Error); ok {
-					err = le
-				}
-			}
-
-			e.DefaultHTTPErrorHandler(&echo.HTTPError{
-				Code:     lerr.HttpStatusCode,
-				Message:  err.Message, // what we return to api caller
-				Internal: lerr.Unwrap(),
-			}, c)
+		var echoError *echo.HTTPError
+		if errors.As(err, &echoError) {
+			e.DefaultHTTPErrorHandler(echoError, c)
 		} else {
 			e.DefaultHTTPErrorHandler(err, c)
 		}
