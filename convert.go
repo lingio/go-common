@@ -1,7 +1,10 @@
 package common
 
-import "time"
-import openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
+import (
+	"time"
+
+	openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
+)
 
 func Bool(b *bool) bool {
 	if b != nil && *b {
@@ -15,6 +18,10 @@ func Int(i *int) int {
 		return 0
 	}
 	return *i
+}
+
+func IntP(i int) *int {
+	return &i
 }
 
 func Str(s *string) string {
