@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/labstack/echo/v4"
 )
 
 // Errorf returns a common lingio error wrapping the provided error.
@@ -119,7 +121,14 @@ func FullErrorTrace(e error) string {
 	err := e
 	for {
 		lasterr = err
-		err = errors.Unwrap(err)
+
+		var lingioErr *Error
+		if errors.As(err, &lingioErr) {
+			err = lingioErr.err
+		} else {
+			err = errors.Unwrap(err)
+		}
+
 		if err == nil {
 			break
 		}
@@ -192,8 +201,16 @@ func (e *Error) ensureMapNotNil() {
 	}
 }
 
-func (e *Error) Unwrap() error {
-	return e.err
+func (e *Error) Unwrap() []error {
+	return []error{
+		e.err,
+		// multierror-style so echo is happy
+		&echo.HTTPError{
+			Code:     e.HttpStatusCode,
+			Message:  e.Message,
+			Internal: e,
+		},
+	}
 }
 
 func (e *Error) Caller(skip int) *Error {
