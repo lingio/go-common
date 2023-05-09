@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -32,10 +31,19 @@ type ErrorStruct struct {
 
 type EchoConfig struct {
 	BodyLimit echo.MiddlewareFunc
+
+	// Initializes per-request logger. Defaults to GCP-style if nil.
+	RequestLogger func(http.ResponseWriter) zerolog.Logger
+
+	// Hard to autodetect where server is running so programmer's responsibility
+	// specify request log output format. Defaults to GCP-style if nil.
+	RequestLogFormatter RequestLogFormatter
 }
 
 var DefaultEchoConfig = EchoConfig{
-	BodyLimit: echomiddleware.BodyLimit("1M"),
+	BodyLimit:           echomiddleware.BodyLimit("1M"),
+	RequestLogger:       gcpRequestLogger,
+	RequestLogFormatter: gcpRequestLogFormatter,
 }
 
 func combineSkippers(skippers ...echomiddleware.Skipper) echomiddleware.Skipper {
@@ -50,18 +58,26 @@ func combineSkippers(skippers ...echomiddleware.Skipper) echomiddleware.Skipper 
 }
 
 func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo {
+	if config.RequestLogFormatter == nil {
+		config.RequestLogFormatter = gcpRequestLogFormatter
+	}
+	if config.RequestLogger == nil {
+		config.RequestLogger = gcpRequestLogger
+	}
+
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
 
 	// Init Prometheus
 	p := prometheus.NewPrometheus("echo", nil)
-	skipOnMetricRequest := func(ctx echo.Context) bool {
-		return ctx.Path() == p.MetricsPath || strings.HasPrefix(ctx.Path(), "/ops")
+	isMetricRequest := func(ctx echo.Context) bool {
+		return ctx.Path() == p.MetricsPath
 	}
-	skipOpsRequest := func(ctx echo.Context) bool {
-		return strings.HasPrefix(ctx.Path(), "/ops")
+	isOpsRequest := func(ctx echo.Context) bool {
+		return strings.HasPrefix(ctx.Path(), "/ops") || strings.HasPrefix(ctx.Path(), "/debug")
 	}
+	devopsRequestSkipper := combineSkippers(isMetricRequest, isOpsRequest)
 
 	// Set up a basic Echo router and its middlewares
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
@@ -77,21 +93,15 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 
 	e.Use(otelecho.Middleware(
 		swagger.Info.Title,
-		otelecho.WithSkipper(skipOnMetricRequest),
+		otelecho.WithSkipper(devopsRequestSkipper),
 		otelecho.WithTracerProvider(otel.GetTracerProvider()),
 	))
 
-	logger := zerolog.New(os.Stderr)
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			reqlogger := zerolog.New(os.Stderr).With().
-				Caller().
-				Timestamp().
-				Str("correlation_id", c.Response().Header().Get("X-Request-ID")).
-				Logger()
-
-			ctx := c.Request().Context()
-			wrappedCtx := reqlogger.WithContext(ctx)
+			reqlog := config.RequestLogger(c.Response().Writer)
+			originalCtx := c.Request().Context()
+			wrappedCtx := reqlog.WithContext(originalCtx)
 			c.SetRequest(c.Request().WithContext(wrappedCtx))
 			return next(c)
 		}
@@ -109,51 +119,23 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 		LogContentLength: true,
 		LogRoutePath:     true,
 		LogUserAgent:     true,
-		LogValuesFunc: func(c echo.Context, v echomiddleware.RequestLoggerValues) error {
-			span := trace.SpanFromContext(c.Request().Context())
-			zle := logger.Err(v.Error) // log level info if v.Error is nil, otherwise error
-			zle.Time("time", v.StartTime).
-				Str("host", v.Host).
-				Str("remote_ip", v.RemoteIP).
-				Str("user_agent", v.UserAgent).
-				Str("protocol", v.Protocol).
-				Str("method", v.Method).
-				Str("uri", v.URI).        // /users/5?q=1
-				Str("path", v.RoutePath). // /users/:userid
-				Int("status", v.Status).
-				Int64("latency_us", v.Latency.Microseconds()).
-				Str("latency_human", v.Latency.String()).
-				Str("bytes_in", v.ContentLength).
-				Int64("bytes_out", v.ResponseSize).
-				Str("trace_id", span.SpanContext().TraceID().String()).
-				Str("correlation_id", c.Response().Header().Get("X-Request-ID"))
-
-			if v.Error != nil {
-				zle.Str("full_trace", FullErrorTrace(v.Error))
-			}
-
-			zle.Msg("request") // actually log it
-
-			return nil
-		},
+		LogValuesFunc:    config.RequestLogFormatter,
 	}))
 	e.Use(config.BodyLimit) // limit request body size
 	e.Use(echomiddleware.CORS())
 	e.Use(echomiddleware.GzipWithConfig(echomiddleware.GzipConfig{
-		Skipper: skipOnMetricRequest,
+		Skipper: devopsRequestSkipper,
 	}))
 
-	p.Use(e)
+	p.Use(e) // add prometheus /metrics endpoint
 
 	// Set up request validation
-	options := &middleware.Options{
-		Options: openapi3filter.Options{},
-		Skipper: combineSkippers(skipOnMetricRequest, skipOpsRequest),
-	}
-	options.Options.AuthenticationFunc = func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
-		return nil
-	}
-	e.Use(middleware.OapiRequestValidatorWithOptions(swagger, options)) // check all requests against the OpenAPI schema
+	e.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
+		Options: openapi3filter.Options{
+			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
+		},
+		Skipper: devopsRequestSkipper,
+	}))
 
 	return e
 }
@@ -174,7 +156,7 @@ func ServeUntilSignal(e GracefulServer, addr string, signals ...os.Signal) {
 
 	go func() {
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
-			zl.Fatal().Str("error", err.Error()).Msg("fatal error serving api")
+			zl.Warn().Str("error", err.Error()).Msg("fatal error serving api")
 		}
 	}()
 

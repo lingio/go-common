@@ -25,9 +25,12 @@ type RedisConfig struct {
 
 type MonitorConfig struct {
 	TempoHost  string
-	CloudTrace struct {
-		Enabled bool
-	}
+	CloudTrace CloudTraceConfig
+}
+
+type CloudTraceConfig struct {
+	ProjectID string
+	Enabled   bool
 }
 
 func MustGetenv(key string) string {
