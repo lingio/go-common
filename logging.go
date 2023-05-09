@@ -4,19 +4,12 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/trace"
 )
-
-func InitLogging() {
-	zerolog.LevelFieldName = "severity"
-	zerolog.TimestampFieldName = "timestamp"
-	zerolog.TimeFieldFormat = time.RFC3339Nano
-}
 
 type RequestLogFormatter func(c echo.Context, v echomiddleware.RequestLoggerValues) error
 type RequestLogger func(http.ResponseWriter) zerolog.Logger
@@ -50,9 +43,9 @@ func gcpRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerValues
 				Str("protocol", v.Protocol),
 		).
 		Str("path", v.RoutePath). // /users/:userid
-		Str("logging.googleapis.com/trace", "/projects/lingio-stage/traces/"+spanCtx.TraceID().String()).
+		Str("logging.googleapis.com/trace", "/projects/"+env.ProjectID+"/traces/"+spanCtx.TraceID().String()).
 		Str("logging.googleapis.com/spanId", spanCtx.SpanID().String()).
-		Bool("logging.googleapis.com/trace_sampled ", spanCtx.IsSampled())
+		Bool("logging.googleapis.com/traceSampled", spanCtx.IsSampled())
 
 	// https://cloud.google.com/logging/docs/structured-logging#special-payload-fields
 	//
@@ -101,20 +94,37 @@ func defaultRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerVa
 var _ RequestLogFormatter = gcpRequestLogFormatter
 var _ RequestLogFormatter = defaultRequestLogFormatter
 
+func setupZerologger() zerolog.Logger {
+	switch env.Environment {
+	case EnvDevelop:
+		return zerolog.New(zerolog.NewConsoleWriter(
+			func(w *zerolog.ConsoleWriter) {
+				// basically, only log message and full_trace
+				w.FieldsExclude = []string{
+					"host", "remote_ip", "user_agent", "protocol", "method", "httpRequest",
+					"uri", "status", "latency_us", "latency_human", "bytes_in", "bytes_out",
+					"logging.googleapis.com/spanId", "logging.googleapis.com/traceSampled",
+					"logging.googleapis.com/operation", "correlation_id", "path",
+					"error", "logging.googleapis.com/trace", "trace",
+				}
+			},
+		)).With().Timestamp().Logger()
+	default:
+		return zerolog.New(os.Stderr)
+	}
+}
+
 func gcpRequestLogger(w http.ResponseWriter) zerolog.Logger {
-	return zerolog.New(os.Stderr).With().
-		Timestamp().
+	return setupZerologger().With().
 		Dict("logging.googleapis.com/operation",
 			zerolog.Dict().
 				Str("id", w.Header().Get(echo.HeaderXRequestID)),
 		).
 		Logger()
-
 }
 
 func defaultRequestLog(w http.ResponseWriter) zerolog.Logger {
-	return zerolog.New(os.Stderr).With().
-		Timestamp().
+	return setupZerologger().With().
 		Str("correlation_id", w.Header().Get(echo.HeaderXRequestID)).
 		Logger()
 
