@@ -96,7 +96,7 @@ var _ RequestLogFormatter = defaultRequestLogFormatter
 
 func setupZerologger() zerolog.Logger {
 	switch env.Environment {
-	case EnvDevelop:
+	case EnvDevelop, EnvUnknown:
 		return zerolog.New(zerolog.NewConsoleWriter(
 			func(w *zerolog.ConsoleWriter) {
 				// basically, only log message and full_trace
