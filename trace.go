@@ -53,9 +53,7 @@ var traceConfigProduction = traceconfig{
 	Retry:   traceConfigStaging.Retry,
 }
 
-func InitMonitoring(serviceName string, cfg MonitorConfig) error {
-	env := ParseEnv()
-
+func InitMonitoring(env Environment, serviceName string, cfg MonitorConfig) error {
 	if cfg.TempoHost != "" {
 		if err := InitHttpTrace(serviceName, env, cfg.TempoHost); err != nil {
 			return fmt.Errorf("init trace provider: %w", err)
@@ -64,14 +62,16 @@ func InitMonitoring(serviceName string, cfg MonitorConfig) error {
 	}
 
 	if cfg.CloudTrace.Enabled {
-		return InitGoogleCloudTrace(context.TODO(), serviceName, env)
+		return InitGoogleCloudTrace(context.TODO(), env, serviceName, cfg.CloudTrace)
 	}
 
 	return nil
 }
 
-func InitGoogleCloudTrace(ctx context.Context, serviceName string, env Environment) error {
-	exporter, err := gcptraceexporter.New() // autodetect projectID from default credentials
+func InitGoogleCloudTrace(ctx context.Context, env Environment, serviceName string, cfg CloudTraceConfig) error {
+	exporter, err := gcptraceexporter.New(
+		gcptraceexporter.WithProjectID(cfg.ProjectID),
+	)
 	if err != nil {
 		return Errorf(err, "gcp trace exporter")
 	}
@@ -88,28 +88,6 @@ func InitGoogleCloudTrace(ctx context.Context, serviceName string, env Environme
 	}
 
 	return setupTraceProvider(env, exporter, res)
-}
-
-func setupTraceProvider(env Environment, spanExporter sdktrace.SpanExporter, res *resource.Resource) error {
-	// specify environment-dependent options
-	var cfg traceconfig
-	switch env {
-	case EnvDevelop:
-		cfg = traceConfigDevelop
-	case EnvStaging:
-		cfg = traceConfigStaging
-	case EnvProduction:
-		cfg = traceConfigProduction
-	}
-
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(cfg.Sampler),
-		sdktrace.WithBatcher(spanExporter),
-		sdktrace.WithResource(res),
-	)
-	otel.SetTracerProvider(tp) // set as global trace provider
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-	return nil
 }
 
 func InitHttpTrace(serviceName string, env Environment, tempoHost string) error {
@@ -140,6 +118,28 @@ func InitHttpTrace(serviceName string, env Environment, tempoHost string) error 
 		semconv.ServiceVersionKey.String(GetBuildCommitHash()),
 	)
 	return setupTraceProvider(env, client, res)
+}
+
+func setupTraceProvider(env Environment, spanExporter sdktrace.SpanExporter, res *resource.Resource) error {
+	// specify environment-dependent options
+	var cfg traceconfig
+	switch env {
+	case EnvDevelop:
+		cfg = traceConfigDevelop
+	case EnvStaging:
+		cfg = traceConfigStaging
+	case EnvProduction:
+		cfg = traceConfigProduction
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(cfg.Sampler),
+		sdktrace.WithBatcher(spanExporter),
+		sdktrace.WithResource(res),
+	)
+	otel.SetTracerProvider(tp) // set as global trace provider
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+	return nil
 }
 
 func GetBuildCommitHash() string {

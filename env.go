@@ -1,8 +1,9 @@
 package common
 
 import (
-	"os"
 	"strings"
+
+	zl "github.com/rs/zerolog/log"
 )
 
 type Environment string
@@ -15,39 +16,47 @@ var (
 )
 
 type Env struct {
-	EnvName    string
+	EnvName string
+	// GCP project ID.
 	ProjectID  string
 	ConfigFile string
+	Environment
 }
 
 func SetupEnv() *Env {
-	env := os.Getenv("ENV")
-	switch ParseEnv() {
+	return env
+}
+
+func setupEnv() *Env {
+	envstr := MustGetenv("ENV")
+	switch env := ParseEnv(envstr); env {
 	case EnvDevelop:
 		return &Env{
-			EnvName:    env,
-			ProjectID:  "lingio-stage",
-			ConfigFile: env,
+			EnvName:     envstr,
+			ProjectID:   "lingio-stage",
+			ConfigFile:  envstr,
+			Environment: env,
 		}
 	case EnvStaging:
 		return &Env{
-			EnvName:    env,
-			ProjectID:  "lingio-stage",
-			ConfigFile: env,
+			EnvName:     envstr,
+			ProjectID:   "lingio-stage",
+			ConfigFile:  envstr,
+			Environment: env,
 		}
 	case EnvProduction:
 		return &Env{
-			EnvName:    env,
-			ProjectID:  "lingio-prod",
-			ConfigFile: env,
+			EnvName:     envstr,
+			ProjectID:   "lingio-prod",
+			ConfigFile:  envstr,
+			Environment: env,
 		}
 	}
-	panic("SetupEnv: unknown env: " + env)
+	zl.Fatal().Msgf("setupEnv: unknown env %q", envstr)
+	return nil
 }
 
-func ParseEnv() Environment {
-	env := os.Getenv("ENV")
-
+func ParseEnv(env string) Environment {
 	// prod, production, production-glesys
 	if strings.HasPrefix(env, "prod") {
 		return EnvProduction
@@ -61,5 +70,6 @@ func ParseEnv() Environment {
 	if strings.HasPrefix(env, "local") {
 		return EnvDevelop
 	}
+
 	return EnvUnknown
 }
