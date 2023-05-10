@@ -1,6 +1,7 @@
 package common
 
 import (
+	"os"
 	"strings"
 
 	zl "github.com/rs/zerolog/log"
@@ -28,7 +29,7 @@ func SetupEnv() *Env {
 }
 
 func setupEnv() *Env {
-	envstr := MustGetenv("ENV")
+	envstr := os.Getenv("ENV")
 	switch env := ParseEnv(envstr); env {
 	case EnvDevelop:
 		return &Env{
@@ -51,8 +52,16 @@ func setupEnv() *Env {
 			ConfigFile:  envstr,
 			Environment: env,
 		}
+	case EnvUnknown:
+		return &Env{
+			EnvName:     "unknown",
+			ProjectID:   "unknown",
+			ConfigFile:  "unknown",
+			Environment: env,
+		}
+	default:
+		zl.Fatal().Msgf("setupEnv: unknown env %q", env)
 	}
-	zl.Fatal().Msgf("setupEnv: unknown env %q", envstr)
 	return nil
 }
 
