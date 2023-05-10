@@ -167,14 +167,11 @@ func executeReq(req *http.Request) ([]byte, error) {
 			return nil, NewError(resp.StatusCode).
 				Str("host", req.URL.Host).
 				Str("url", req.URL.Path).
-				Int("remoteStatusCode", resp.StatusCode).
-				Msg("remote error without message")
+				Msg("unknown remote error")
 		}
 		return nil, NewError(resp.StatusCode).
 			Str("url", req.URL.Path).
-			Int("remoteStatusCode", resp.StatusCode).
-			Str("remoteError", x.Message).
-			Msg("remote error")
+			Msg(x.Message)
 	}
 	return data, nil
 }
