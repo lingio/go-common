@@ -99,13 +99,13 @@ func setupZerologger() zerolog.Logger {
 	case EnvDevelop, EnvUnknown:
 		return zerolog.New(zerolog.NewConsoleWriter(
 			func(w *zerolog.ConsoleWriter) {
-				// basically, only log message and full_trace
+				// basically, only log message, error and full_trace
 				w.FieldsExclude = []string{
 					"host", "remote_ip", "user_agent", "protocol", "method", "httpRequest",
 					"uri", "status", "latency_us", "latency_human", "bytes_in", "bytes_out",
 					"logging.googleapis.com/spanId", "logging.googleapis.com/traceSampled",
 					"logging.googleapis.com/operation", "correlation_id", "path",
-					"error", "logging.googleapis.com/trace", "trace",
+					"logging.googleapis.com/trace", "trace",
 				}
 			},
 		)).With().Timestamp().Logger()
