@@ -55,7 +55,7 @@ func gcpRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerValues
 	if v.Error != nil {
 		zle.Msg(FullErrorTrace(v.Error))
 	} else {
-		zle.Msg("request") // actually log it
+		zle.Send() // actually log it
 	}
 	return nil
 }
