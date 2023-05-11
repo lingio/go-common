@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+	"google.golang.org/api/option"
 
 	gcptraceexporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
 
@@ -79,6 +80,9 @@ func InitMonitoring(env Environment, serviceName string, cfg MonitorConfig) erro
 func InitGoogleCloudTrace(ctx context.Context, env Environment, serviceName string, cfg CloudTraceConfig) error {
 	exporter, err := gcptraceexporter.New(
 		gcptraceexporter.WithProjectID(cfg.ProjectID),
+		gcptraceexporter.WithTraceClientOptions([]option.ClientOption{
+			option.WithTelemetryDisabled(), // disable self-reporting of trace exporter spans
+		}),
 	)
 	if err != nil {
 		return Errorf(err, "gcp trace exporter")
