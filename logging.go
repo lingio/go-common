@@ -45,7 +45,7 @@ func gcpRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerValues
 		Str("path", v.RoutePath). // /users/:userid
 		Str("logging.googleapis.com/trace", "/projects/"+env.ProjectID+"/traces/"+spanCtx.TraceID().String()).
 		Str("logging.googleapis.com/spanId", spanCtx.SpanID().String()).
-		Bool("logging.googleapis.com/traceSampled", spanCtx.IsSampled())
+		Bool("logging.googleapis.com/trace_sampled", spanCtx.IsSampled())
 
 	// https://cloud.google.com/logging/docs/structured-logging#special-payload-fields
 	//
@@ -103,7 +103,7 @@ func setupZerologger() zerolog.Logger {
 				w.FieldsExclude = []string{
 					"host", "remote_ip", "user_agent", "protocol", "method", "httpRequest",
 					"uri", "status", "latency_us", "latency_human", "bytes_in", "bytes_out",
-					"logging.googleapis.com/spanId", "logging.googleapis.com/traceSampled",
+					"logging.googleapis.com/spanId", "logging.googleapis.com/trace_sampled",
 					"logging.googleapis.com/operation", "correlation_id", "path",
 					"logging.googleapis.com/trace", "trace",
 				}
