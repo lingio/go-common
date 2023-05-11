@@ -15,9 +15,17 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 
 	gcptraceexporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
+
+	octrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/bridge/opencensus"
 )
 
 var tracer = otel.Tracer("lingio.com/go-common")
+
+func init() {
+	// bridge opencensus and opentelemetry
+	octrace.DefaultTracer = opencensus.NewTracer(tracer)
+}
 
 // traceconfig contains both tracesdk and otel options.
 // There is currently no nice way of deserializing json into otel/tracesdk data
