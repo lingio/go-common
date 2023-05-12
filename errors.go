@@ -208,7 +208,7 @@ func (e *Error) Unwrap() []error {
 		&echo.HTTPError{
 			Code:     e.HttpStatusCode,
 			Message:  e.Message,
-			Internal: e,
+			Internal: nil,
 		},
 	}
 }
