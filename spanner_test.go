@@ -8,6 +8,8 @@ import (
 )
 
 func TestEncodeSpannerStructFields(t *testing.T) {
+	type StrType string
+
 	testcases := []struct {
 		name   string
 		source any
@@ -90,6 +92,12 @@ func TestEncodeSpannerStructFields(t *testing.T) {
 				X int64
 				M string `spannerType:"jsonstring"`
 			}{"X", 100, "{\"COMPLEX\":{\"SUBKEY\":99},\"SECRET\":\"42\"}"},
+		},
+		{
+			name:   "locally defined string type",
+			source: &struct{ S StrType }{StrType("hej")},
+			target: &struct{ S string }{},
+			wanted: &struct{ S string }{"hej"},
 		},
 	}
 

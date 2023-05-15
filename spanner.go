@@ -63,7 +63,7 @@ func DecodeSpannerStructFields(
 			continue
 		}
 
-		var tf = findStructFieldByName(targetFields, sf.Name)
+		tf := findStructFieldByName(targetFields, sf.Name)
 
 		// skip if target doesnt have field
 		if tf.Type == nil || tf.Type.Kind() == reflect.Invalid {
@@ -127,8 +127,10 @@ func DecodeSpannerStructFields(
 			tfv.Set(reflect.New(valueType))
 			tfv.Elem().Set(int64AsValueType)
 		default:
-			return fmt.Errorf("unknown type %T -> %T", sfv.Interface(), tfv.Interface())
-
+			if !sfv.CanConvert(tf.Type) {
+				return fmt.Errorf("unknown type %T -> %T", sfv.Interface(), tfv.Interface())
+			}
+			tfv.Set(sfv.Convert(tf.Type))
 		}
 	}
 
@@ -210,7 +212,7 @@ func EncodeSpannerStructFields(
 		// value copy path, with null wrapping
 		switch v := sfv.Interface().(type) {
 		case int, int32, bool, string, int64, float64, time.Time:
-			tfv.Set(sfv.Convert(tfv.Type()))
+			tfv.Set(sfv.Convert(tf.Type))
 		case *time.Time:
 			tfv.Set(reflect.ValueOf(spanner.NullTime{
 				Time:  *v,
@@ -242,7 +244,10 @@ func EncodeSpannerStructFields(
 				Valid:   true,
 			}))
 		default:
-			return fmt.Errorf("cannot copy type %T -> %T", sfv.Interface(), tfv.Interface())
+			if !sfv.CanConvert(tf.Type) {
+				return fmt.Errorf("cannot copy type %T -> %T", sfv.Interface(), tfv.Interface())
+			}
+			tfv.Set(sfv.Convert(tf.Type))
 		}
 	}
 	return nil

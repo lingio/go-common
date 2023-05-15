@@ -44,7 +44,7 @@ func TestAuditLog(t *testing.T) {
 	// 	t.Fatalf(`'authID' not found or invalid: %v (%v), expected '%v'`, authID, ok, "AUTH")
 	// }
 
-	if _, ok := logmsg["time"]; !ok {
+	if _, ok := logmsg["timestamp"]; !ok {
 		t.Fatalf(`timestamp not found`)
 	}
 }
