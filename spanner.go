@@ -92,8 +92,6 @@ func DecodeSpannerStructFields(
 		}
 
 		switch v := sfv.Interface().(type) {
-		case int64, bool, string, time.Time:
-			tfv.Set(sfv.Convert(tf.Type))
 		case spanner.NullTime:
 			if !v.Valid {
 				continue
@@ -211,8 +209,6 @@ func EncodeSpannerStructFields(
 
 		// value copy path, with null wrapping
 		switch v := sfv.Interface().(type) {
-		case int, int32, bool, string, int64, float64, time.Time:
-			tfv.Set(sfv.Convert(tf.Type))
 		case *time.Time:
 			tfv.Set(reflect.ValueOf(spanner.NullTime{
 				Time:  *v,
