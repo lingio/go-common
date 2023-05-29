@@ -14,12 +14,26 @@ import (
 type RequestLogFormatter func(c echo.Context, v echomiddleware.RequestLoggerValues) error
 type RequestLogger func(http.ResponseWriter) zerolog.Logger
 
+func initRequestLog(zl *zerolog.Logger, v echomiddleware.RequestLoggerValues) *zerolog.Event {
+	if v.Error == nil {
+		return zl.Info()
+	}
+	if lerr, ok := v.Error.(*Error); ok && lerr != nil {
+		// only log level err if we have critical server error
+		if lerr.HttpStatusCode >= 500 {
+			return zl.Err(v.Error)
+		} else if lerr.HttpStatusCode >= 400 {
+			return zl.Warn()
+		}
+	}
+	return zl.Info()
+}
+
 func gcpRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerValues) error {
 	var (
 		spanCtx = trace.SpanFromContext(c.Request().Context()).SpanContext()
 
-		// log level info if v.Error is nil, otherwise error
-		zle = zerolog.Ctx(c.Request().Context()).Err(v.Error)
+		zle = initRequestLog(zerolog.Ctx(c.Request().Context()), v)
 	)
 
 	zle.
@@ -65,7 +79,7 @@ func defaultRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerVa
 		span = trace.SpanFromContext(c.Request().Context())
 
 		// log level info if v.Error is nil, otherwise error
-		zle = zerolog.Ctx(c.Request().Context()).Err(v.Error)
+		zle = initRequestLog(zerolog.Ctx(c.Request().Context()), v)
 	)
 
 	zle.Str("host", v.Host).
