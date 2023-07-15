@@ -3,10 +3,21 @@
 - Monitoring [common.InitMonitoring(svcName, monitorCfg)](trace.go#L56).
   - Traces: otel http sink, gcp cloud trace
 
+## spanner-tools
+
+Some useful commands that `wrench` and `spanner-cli` does not cover.
+
+Especially, copying data from staging to local emulator is *much* faster than with `spanner-cli`.
+
+```bash
+go install github.com/lingio/go-common/script/spanner-tools@latest
+spanner-tools -h
+```
+
 ## storagegen
 
 ```bash
-go install github.com/lingio/storagegen
+go install github.com/lingio/go-common/storagegen@latest
 storagegen path/to/service/storage/spec.json
 ```
 
