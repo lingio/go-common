@@ -3,7 +3,15 @@
 - Monitoring [common.InitMonitoring(svcName, monitorCfg)](trace.go#L56).
   - Traces: otel http sink, gcp cloud trace
 
-## spanner-tools
+## spanner
+
+### setup local spanner
+
+```bash
+./script/setup-spanner-emulator.sh gcp-project-id spanner-instance-id database-name
+```
+
+### spanner-tools
 
 Some useful commands that `wrench` and `spanner-cli` does not cover.
 
