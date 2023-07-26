@@ -25,6 +25,7 @@ Installing the local spanner emulator:
 ```bash
 gcloud components update
 # Install as needed when prompted.
+# If gcloud is installed via google-cloud-cli, ensure apt install command starts with google-cloud-cli instead of google-cloud-sdk
 gcloud emulators spanner start
 ```
 
