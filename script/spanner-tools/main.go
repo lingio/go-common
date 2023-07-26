@@ -22,6 +22,7 @@ var (
 	limitRows int
 )
 
+// row is the json-encoded input/output format of spanner data.
 type row struct {
 	Table string
 	Cols  []string
@@ -71,8 +72,7 @@ EXAMPES:
 		log.Fatalln(err)
 	}
 
-	group := flag.Arg(0)
-	switch group {
+	switch group := flag.Arg(0); group {
 	case "row", "rows":
 		switch flag.Arg(1) {
 		case "list":
@@ -102,7 +102,11 @@ EXAMPES:
 		}
 
 	default:
-		log.Fatalln("unknown command", group)
+		fmt.Println("missing or unknown command", group)
+		fmt.Println("try:")
+		fmt.Println(os.Args[0], "row")
+		fmt.Println(os.Args[0], "table")
+		os.Exit(1)
 	}
 }
 
