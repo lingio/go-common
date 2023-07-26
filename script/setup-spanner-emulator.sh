@@ -108,7 +108,7 @@ spanner-cli \
 		-e="SELECT '{}' as name, count(*) as x FROM {}" | \
 		grep -v name
 
-if true; then
+if -f sql/migrations; then
 	echo "* Running sql migrations ..."
 	wrench \
 		--project lingio-test \
@@ -116,6 +116,8 @@ if true; then
 		--database $DATABASE \
 		--directory sql \
 		migrate up
+else
+	echo "* sql/migrations dir not found, skipping migrations"
 fi
 
 echo ""
