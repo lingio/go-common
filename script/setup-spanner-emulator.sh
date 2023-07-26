@@ -35,8 +35,9 @@ else
 	done
 fi
 
+echo "* Installing spanner-cli and spanner-tools ..."
 go install github.com/cloudspannerecosystem/spanner-cli@latest
-go install github.com/lingio/go-common/scripts/spanner-tools@latest
+go install github.com/lingio/go-common/script/spanner-tools@latest
 
 echo "* Activating gcloud emulator config"
 gcloud config configurations activate emulator
