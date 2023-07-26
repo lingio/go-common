@@ -7,9 +7,11 @@
 
 ### setup local spanner
 
-- requires gcloud
+- requires gcloud ([install](https://cloud.google.com/sdk/docs/install))
 - requires gcloud configuration `emulator`
+- requires spanner emulator component
 
+Setting up `emulator` config:
 ```bash
 # Setup gcloud configuration
 gcloud config configurations create emulator
@@ -18,13 +20,18 @@ gcloud config set project lingio-test
 gcloud config set api_endpoint_overrides/spanner http://localhost:9020/
 ```
 
+Installing the local spanner emulator:
+```bash
+gcloud components update
+gcloud emulators spanner start
+```
+
+Finally, copying staging database to local.
 ```bash
 ./script/setup-spanner-emulator.sh gcp-project-id spanner-instance-id database-name
-
-# e.g.
-cd progression-service2
-bash ../go-common/script/setup-spanner-emulator.sh lingio-stage lingio-staging-1 progression
 ```
+
+There are certain [limitations](https://cloud.google.com/spanner/docs/emulator#limitations).
 
 ### spanner-tools
 
