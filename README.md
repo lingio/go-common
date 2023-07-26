@@ -8,6 +8,7 @@
 ### setup local spanner
 
 - requires gcloud ([install](https://cloud.google.com/sdk/docs/install))
+  - `snap` is not supported, [uninstall](https://cloud.google.com/sdk/docs/downloads-snap) and use link above!
 - requires gcloud configuration `emulator`
 - requires spanner emulator component
 
@@ -23,6 +24,7 @@ gcloud config set api_endpoint_overrides/spanner http://localhost:9020/
 Installing the local spanner emulator:
 ```bash
 gcloud components update
+# Install as needed when prompted.
 gcloud emulators spanner start
 ```
 
