@@ -108,5 +108,16 @@ spanner-cli \
 		-e="SELECT '{}' as name, count(*) as x FROM {}" | \
 		grep -v name
 
+if true; then
+	echo "* Running sql migrations ..."
+	wrench \
+		--project lingio-test \
+		--instance test-instance \
+		--database $DATABASE \
+		--directory sql \
+		migrate up
+fi
+
 echo ""
 echo "* Run service with SPANNER_EMULATOR_HOST=$SPANNER_EMULATOR_HOST env. to dial emulator."
+
