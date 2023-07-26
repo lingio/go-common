@@ -9,6 +9,10 @@
 
 ```bash
 ./script/setup-spanner-emulator.sh gcp-project-id spanner-instance-id database-name
+
+# e.g.
+cd progression-service2
+bash ../go-common/script/setup-spanner-emulator.sh lingio-stage lingio-staging-1 progression
 ```
 
 ### spanner-tools
