@@ -7,6 +7,17 @@
 
 ### setup local spanner
 
+- requires gcloud
+- requires gcloud configuration `emulator`
+
+```bash
+# Setup gcloud configuration
+gcloud config configurations create emulator
+gcloud config set auth/disable_credentials true
+gcloud config set project lingio-test
+gcloud config set api_endpoint_overrides/spanner http://localhost:9020/
+```
+
 ```bash
 ./script/setup-spanner-emulator.sh gcp-project-id spanner-instance-id database-name
 
