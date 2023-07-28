@@ -108,7 +108,7 @@ spanner-cli \
 		-e="SELECT '{}' as name, count(*) as x FROM {}" | \
 		grep -v name
 
-if -f sql/migrations; then
+if [ -d sql/migrations ]; then
 	echo "* Running sql migrations ..."
 	wrench \
 		--project lingio-test \
