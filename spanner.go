@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -247,6 +248,127 @@ func EncodeSpannerStructFields(
 		}
 	}
 	return nil
+}
+
+// SpannerReadTyped returns all rows in keySet from primary index,
+// deserialized to struct T.
+//
+// Spanner keyset primer:
+//
+//	spanner.AllKeys()                        // fetch all rows in db
+//	spanner.Key{"A", "B"}.AsPrefix()         // fetch all rows with primary index prefixed with {A,B}
+//	spanner.KeySetFromKeys(spanner.Key{"A"}) // fetch one row with primary index = "A"
+func SpannerReadTyped[T any](ctx context.Context, cli *spanner.Client, table string, keySet spanner.KeySet) ([]T, error) {
+	return SpannerReadTypedWithOptions[T](ctx, cli, table, keySet, nil)
+}
+
+// SpannerReadTypedUsingIndex is identical to [SpannerReadTyped] but uses the
+// provided index.
+//
+// Make sure all expected columns are stored in the index.
+func SpannerReadTypedUsingIndex[T any](ctx context.Context, cli *spanner.Client, table, index string, keySet spanner.KeySet) ([]T, error) {
+	return SpannerReadTypedWithOptions[T](ctx, cli, table, keySet, &spanner.ReadOptions{Index: index})
+}
+
+// SpannerReadTypedWithOptions returns all rows in keySet from primary index,
+// deserialized to struct T.
+//
+// Spanner keyset primer:
+//
+//	spanner.AllKeys()                        // fetch all rows in db
+//	spanner.Key{"A", "B"}.AsPrefix()         // fetch all rows with primary index prefixed with {A,B}
+//	spanner.KeySetFromKeys(spanner.Key{"A"}) // fetch one row with primary index = "A"
+//
+// Read more about key sets: https://pkg.go.dev/cloud.google.com/go/spanner@v1.44.0#KeySet
+func SpannerReadTypedWithOptions[T any](ctx context.Context, cli *spanner.Client, table string, keySet spanner.KeySet, opts *spanner.ReadOptions) ([]T, error) {
+	txn := cli.ReadOnlyTransaction()
+	defer txn.Close()
+
+	var t T
+	it := txn.ReadWithOptions(ctx, table, keySet, SpannerStructFieldNames(t), opts)
+	return SpannerReadProjected(it, ProjectIdentity[T])
+}
+
+// SpannerReadTypedAndDecode returns all rows in keySet from the primary
+// index, deserialized to struct I and then decoded into struct T using
+// [DecodeSpannerStructFields].
+//
+// Spanner keyset primer:
+//
+//	spanner.AllKeys()                        // fetch all rows in db
+//	spanner.Key{"A", "B"}.AsPrefix()         // fetch all rows with primary index prefixed with {A,B}
+//	spanner.KeySetFromKeys(spanner.Key{"A"}) // fetch one row with primary index = "A"
+func SpannerReadTypedAndDecode[I any, T any](ctx context.Context, cli *spanner.Client, table string, keySet spanner.KeySet) ([]T, error) {
+	return SpannerReadTypedAndDecodeWithOptions[I, T](ctx, cli, table, keySet, nil)
+}
+
+// SpannerReadTypedAndDecodeUsingIndex is identical to
+// [SpannerReadTypedAndDecode] but uses the provided index.
+//
+// Make sure all expected columns are stored in the index.
+func SpannerReadTypedAndDecodeUsingIndex[I any, T any](ctx context.Context, cli *spanner.Client, table, index string, keySet spanner.KeySet) ([]T, error) {
+	return SpannerReadTypedAndDecodeWithOptions[I, T](ctx, cli, table, keySet, &spanner.ReadOptions{Index: index})
+}
+
+// SpannerReadTypedAndDecodeWithOptions returns all rows in keySet from the
+// primary index, deserialized to struct I and then decoded into struct T
+// using [DecodeSpannerStructFields].
+//
+// Spanner keyset primer:
+//
+//	spanner.AllKeys()                        // fetch all rows in db
+//	spanner.Key{"A", "B"}.AsPrefix()         // fetch all rows with primary index prefixed with {A,B}
+//	spanner.KeySetFromKeys(spanner.Key{"A"}) // fetch one row with primary index = "A"
+//
+// Read more about key sets: https://pkg.go.dev/cloud.google.com/go/spanner@v1.44.0#KeySet
+func SpannerReadTypedAndDecodeWithOptions[I any, T any](ctx context.Context, cli *spanner.Client, table string, keySet spanner.KeySet, opts *spanner.ReadOptions) ([]T, error) {
+	txn := cli.ReadOnlyTransaction()
+	defer txn.Close()
+
+	var i I // intermediate
+	it := txn.ReadWithOptions(ctx, table, keySet, SpannerStructFieldNames(i), opts)
+	return SpannerReadProjected(it, ProjectDecoded[I, T])
+}
+
+// SpannerReadProjected returns projection `T -> P` of all rows in iterator.
+//
+// This is a low level helper. See [SpannerReadTyped] and [SpannerReadTypedAndDecode].
+func SpannerReadProjected[T any, P any](ri *spanner.RowIterator, projection func(T) (P, error)) ([]P, error) {
+	var (
+		rows []P
+	)
+
+	err := ri.Do(
+		func(r *spanner.Row) error {
+			var i T
+			if err := r.ToStruct(&i); err != nil {
+				return Errorf(err)
+			}
+			p, err := projection(i)
+			if err != nil {
+				return Errorf(err)
+			}
+			rows = append(rows, p)
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, Errorf(err)
+	}
+	return rows, nil
+}
+
+// ProjectIdentity is a dummy projection
+func ProjectIdentity[T any](i T) (T, error) { return i, nil }
+
+// ProjectDecoded projects struct of type I to struct of type T using
+// [DecodeSpannerStructFields].
+func ProjectDecoded[I any, T any](i I) (T, error) {
+	var t T
+	if err := DecodeSpannerStructFields(i, &t); err != nil {
+		return t, Errorf(err)
+	}
+	return t, nil
 }
 
 func typeAndValueOfStruct(x any) (reflect.Type, reflect.Value) {
