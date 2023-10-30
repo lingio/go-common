@@ -122,7 +122,13 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 		LogValuesFunc:    config.RequestLogFormatter,
 	}))
 	e.Use(config.BodyLimit) // limit request body size
-	e.Use(echomiddleware.CORS())
+	e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
+		Skipper:      echomiddleware.DefaultSkipper,
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
+		// NOTE: Max-Age is constrained by browser implementation, so the actual max age might be less.
+		MaxAge: int((30 * 24 * time.Hour).Seconds()),
+	}))
 	e.Use(echomiddleware.GzipWithConfig(echomiddleware.GzipConfig{
 		Skipper: devopsRequestSkipper,
 	}))
