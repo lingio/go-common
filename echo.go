@@ -75,7 +75,10 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 	isOpsRequest := func(ctx echo.Context) bool {
 		return strings.HasPrefix(ctx.Path(), "/ops") || strings.HasPrefix(ctx.Path(), "/debug")
 	}
-	devopsRequestSkipper := combineSkippers(isMetricRequest, isOpsRequest)
+	isPingRequest := func(ctx echo.Context) bool {
+		return ctx.Path() == "/ping"
+	}
+	devopsRequestSkipper := combineSkippers(isMetricRequest, isOpsRequest, isPingRequest)
 
 	// Set up a basic Echo router and its middlewares
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
@@ -140,6 +143,9 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 		},
 		Skipper: devopsRequestSkipper,
 	}))
+
+	// Always have a ping endpoint.
+	e.GET("/ping", echo.WrapHandler(http.HandlerFunc(ping)))
 
 	return e
 }
