@@ -1,6 +1,8 @@
 package common
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"os"
 	"strconv"
@@ -66,7 +68,7 @@ func gcpRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerValues
 	// ... If your log entry contains an exception stack trace, the exception
 	// stack trace should be set in this message JSON log field, ...
 	//
-	if v.Error != nil {
+	if v.Error != nil && !errors.Is(v.Error, context.Canceled) {
 		zle.Msg(FullErrorTrace(v.Error))
 	} else {
 		zle.Msgf("%s %v %s", v.Method, v.Status, v.RoutePath) // GET 200 /users/:userId
@@ -96,7 +98,7 @@ func defaultRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerVa
 		Int64("bytes_out", v.ResponseSize).
 		Str("trace_id", span.SpanContext().TraceID().String())
 
-	if v.Error != nil {
+	if v.Error != nil && !errors.Is(v.Error, context.Canceled) {
 		zle.Str("full_trace", FullErrorTrace(v.Error))
 	}
 
