@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"os"
 
 	zl "github.com/rs/zerolog/log"
@@ -40,4 +41,18 @@ func MustGetenv(key string) string {
 		// unreachable!
 	}
 	return val
+}
+
+func UnmarshalFile[T any](name string) (*T, error) {
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return nil, Errorf(err)
+	}
+
+	var t T
+	if err := json.Unmarshal(data, &t); err != nil {
+		return nil, Errorf(err)
+	}
+
+	return &t, nil
 }
