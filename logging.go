@@ -20,6 +20,9 @@ func initRequestLog(zl *zerolog.Logger, v echomiddleware.RequestLoggerValues) *z
 	if v.Error == nil {
 		return zl.Info()
 	}
+	if errors.Is(v.Error, context.Canceled) {
+		return zl.Warn() // do not treat client-initiated cancellation as an error
+	}
 	if lerr, ok := v.Error.(*Error); ok && lerr != nil {
 		// only log level err if we have critical server error
 		if lerr.HttpStatusCode >= 500 {
