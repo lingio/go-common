@@ -60,6 +60,7 @@ func StatusProbeServer(port int, probes ...StatusProbe) *http.Server {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/*", handler)
+	mux.HandleFunc("/ping", handler)
 	mux.HandleFunc("/debug/pprof", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
@@ -80,4 +81,8 @@ func StatusProbeServer(port int, probes ...StatusProbe) *http.Server {
 	}()
 
 	return srv
+}
+
+func ping(res http.ResponseWriter, req *http.Request) {
+	res.Write([]byte("PONG"))
 }
