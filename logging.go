@@ -11,6 +11,8 @@ import (
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type RequestLogFormatter func(c echo.Context, v echomiddleware.RequestLoggerValues) error
@@ -20,7 +22,7 @@ func initRequestLog(zl *zerolog.Logger, v echomiddleware.RequestLoggerValues) *z
 	if v.Error == nil {
 		return zl.Info()
 	}
-	if errors.Is(v.Error, context.Canceled) {
+	if errors.Is(v.Error, context.Canceled) || status.Code(v.Error) == codes.Canceled {
 		return zl.Warn() // do not treat client-initiated cancellation as an error
 	}
 	if lerr, ok := v.Error.(*Error); ok && lerr != nil {
