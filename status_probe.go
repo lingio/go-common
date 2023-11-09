@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/pprof"
 
 	zl "github.com/rs/zerolog/log"
 )
@@ -57,14 +58,24 @@ func StatusProbeServer(port int, probes ...StatusProbe) *http.Server {
 		res.Write([]byte("HELO"))
 	}
 
+	mux := http.NewServeMux()
+	mux.HandleFunc("/*", handler)
+	mux.HandleFunc("/debug/pprof", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
 	srv := &http.Server{
 		Addr:    net.JoinHostPort("0.0.0.0", fmt.Sprint(port)),
-		Handler: http.HandlerFunc(handler),
+		Handler: mux,
 	}
 
 	go func() {
+		zl.Info().Str("addr", srv.Addr).Msg("starting statusprobe server")
+
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			zl.Fatal().Str("error", err.Error()).Msg("fatal error serving status probes")
+			zl.Error().Str("error", err.Error()).Msg("error serving status probes")
 		}
 	}()
 
