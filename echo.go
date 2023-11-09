@@ -41,9 +41,7 @@ type EchoConfig struct {
 }
 
 var DefaultEchoConfig = EchoConfig{
-	BodyLimit:           echomiddleware.BodyLimit("1M"),
-	RequestLogger:       gcpRequestLogger,
-	RequestLogFormatter: gcpRequestLogFormatter,
+	BodyLimit: echomiddleware.BodyLimit("1M"),
 }
 
 func combineSkippers(skippers ...echomiddleware.Skipper) echomiddleware.Skipper {
@@ -57,9 +55,9 @@ func combineSkippers(skippers ...echomiddleware.Skipper) echomiddleware.Skipper 
 	}
 }
 
-func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo {
+func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *echo.Echo {
 	if config.RequestLogFormatter == nil {
-		config.RequestLogFormatter = gcpRequestLogFormatter
+		config.RequestLogFormatter = env.gcpRequestLogFormatter
 	}
 	if config.RequestLogger == nil {
 		config.RequestLogger = gcpRequestLogger
@@ -146,8 +144,8 @@ func NewEchoServerWithConfig(swagger *openapi3.T, config EchoConfig) *echo.Echo 
 	return e
 }
 
-func NewEchoServer(swagger *openapi3.T) *echo.Echo {
-	return NewEchoServerWithConfig(swagger, DefaultEchoConfig)
+func NewEchoServer(env *Env, swagger *openapi3.T) *echo.Echo {
+	return NewEchoServerWithConfig(env, swagger, DefaultEchoConfig)
 }
 
 type GracefulServer interface {

@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -36,7 +36,7 @@ func initRequestLog(zl *zerolog.Logger, v echomiddleware.RequestLoggerValues) *z
 	return zl.Info()
 }
 
-func gcpRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerValues) error {
+func (env *Env) gcpRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerValues) error {
 	var (
 		spanCtx = trace.SpanFromContext(c.Request().Context()).SpanContext()
 
@@ -112,27 +112,11 @@ func defaultRequestLogFormatter(c echo.Context, v echomiddleware.RequestLoggerVa
 	return nil
 }
 
-var _ RequestLogFormatter = gcpRequestLogFormatter
+var _ RequestLogFormatter = (&Env{}).gcpRequestLogFormatter
 var _ RequestLogFormatter = defaultRequestLogFormatter
 
 func setupZerologger() zerolog.Logger {
-	switch env.Environment {
-	case EnvDevelop, EnvUnknown:
-		return zerolog.New(zerolog.NewConsoleWriter(
-			func(w *zerolog.ConsoleWriter) {
-				// basically, only log message, error and full_trace
-				w.FieldsExclude = []string{
-					"host", "remote_ip", "user_agent", "protocol", "method", "httpRequest",
-					"uri", "status", "latency_us", "latency_human", "bytes_in", "bytes_out",
-					"logging.googleapis.com/spanId", "logging.googleapis.com/trace_sampled",
-					"logging.googleapis.com/operation", "correlation_id", "path",
-					"logging.googleapis.com/trace", "trace",
-				}
-			},
-		)).With().Timestamp().Logger()
-	default:
-		return zerolog.New(os.Stderr).With().Timestamp().Logger()
-	}
+	return log.Logger
 }
 
 func gcpRequestLogger(w http.ResponseWriter) zerolog.Logger {

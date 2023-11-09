@@ -1,10 +1,8 @@
 package common
 
 import (
-	"os"
+	"fmt"
 	"strings"
-
-	zl "github.com/rs/zerolog/log"
 )
 
 type Environment string
@@ -24,12 +22,7 @@ type Env struct {
 	Environment
 }
 
-func SetupEnv() *Env {
-	return env
-}
-
-func setupEnv() *Env {
-	envstr := os.Getenv("ENV")
+func SetupEnv(envstr string) (*Env, error) {
 	switch env := ParseEnv(envstr); env {
 	case EnvDevelop:
 		return &Env{
@@ -37,32 +30,26 @@ func setupEnv() *Env {
 			ProjectID:   "lingio-stage",
 			ConfigFile:  envstr,
 			Environment: env,
-		}
+		}, nil
 	case EnvStaging:
 		return &Env{
 			EnvName:     envstr,
 			ProjectID:   "lingio-stage",
 			ConfigFile:  envstr,
 			Environment: env,
-		}
+		}, nil
 	case EnvProduction:
 		return &Env{
 			EnvName:     envstr,
 			ProjectID:   "lingio-prod",
 			ConfigFile:  envstr,
 			Environment: env,
-		}
-	case EnvUnknown:
-		return &Env{
-			EnvName:     "unknown",
-			ProjectID:   "unknown",
-			ConfigFile:  "unknown",
-			Environment: env,
-		}
+		}, nil
 	default:
-		zl.Fatal().Msgf("setupEnv: unknown env %q", env)
+		return nil, fmt.Errorf("SetupEnv: unknown env %q must have either prod|stage|local prefix", env)
 	}
-	return nil
+	/* unreachable */
+	// return Env{}, nil
 }
 
 func ParseEnv(env string) Environment {
