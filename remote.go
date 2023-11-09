@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"time"
@@ -143,21 +143,15 @@ func HttpPutWithApiKey(ctx context.Context, url string, body interface{}, apiKey
 
 func executeReq(req *http.Request) ([]byte, error) {
 	resp, err := commonClient.Do(req)
-	if resp != nil && resp.Body != nil {
-		defer resp.Body.Close()
-	}
 	if err != nil {
-		lerr := NewErrorE(http.StatusBadGateway, err).
+		return nil, NewErrorE(http.StatusBadGateway, err).
 			Str("host", req.URL.Host).
 			Str("url", req.URL.Path).
 			Msg("error calling remote service")
-		if resp != nil {
-			lerr.HttpStatusCode = resp.StatusCode
-		}
-		return nil, lerr
 	}
+	defer resp.Body.Close()
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return []byte{}, NewErrorE(http.StatusInternalServerError, err).Msg("failed reading the response")
 	}
