@@ -24,11 +24,11 @@ Usage example:
 
 var commonClient = http.Client{
 	Transport: otelhttp.NewTransport(&http.Transport{
-		MaxIdleConnsPerHost:   10,
+		MaxIdleConnsPerHost:   20,
 		MaxIdleConns:          100,
-		IdleConnTimeout:       time.Second * 60,
-		ResponseHeaderTimeout: time.Second * 30,
-		TLSHandshakeTimeout:   time.Second * 30,
+		IdleConnTimeout:       time.Second * 30,
+		ResponseHeaderTimeout: time.Second * 20,
+		TLSHandshakeTimeout:   time.Second * 10,
 	}, otelhttp.WithTracerProvider(nil)),
 }
 
