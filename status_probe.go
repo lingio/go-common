@@ -59,8 +59,8 @@ func StatusProbeServer(port int, probes ...StatusProbe) *http.Server {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/*", handler)
-	mux.HandleFunc("/ping", handler)
+	mux.HandleFunc("/", handler)
+	mux.HandleFunc("/ping", ping)
 	mux.HandleFunc("/debug/pprof", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
