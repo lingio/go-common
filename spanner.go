@@ -2,12 +2,13 @@ package common
 
 import (
 	"context"
-	"encoding/json"
+	// "encoding/json"
 	"fmt"
 	"reflect"
 	"time"
 
 	"cloud.google.com/go/spanner"
+	"github.com/goccy/go-json"
 )
 
 // SpannerStructFieldNames returns a list with names of all struct fields.
