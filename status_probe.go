@@ -66,6 +66,7 @@ func StatusProbeServer(port int, probes ...StatusProbe) *http.Server {
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
 
 	srv := &http.Server{
 		Addr:    net.JoinHostPort("0.0.0.0", fmt.Sprint(port)),
