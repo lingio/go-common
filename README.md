@@ -3,6 +3,9 @@
 - Monitoring [common.InitMonitoring(svcName, monitorCfg)](trace.go#L56).
   - Traces: otel http sink, gcp cloud trace
 
+- Debugging
+  - go tool pprof
+
 ## spanner
 
 ### setup local spanner
