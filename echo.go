@@ -166,7 +166,7 @@ func ServeUntilSignal(e GracefulServer, addr string, signals ...os.Signal) {
 
 	go func() {
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
-			zl.Warn().Str("error", err.Error()).Msg("fatal error serving api")
+			zl.Fatal().Str("error", err.Error()).Msg("fatal error serving api")
 		}
 	}()
 
