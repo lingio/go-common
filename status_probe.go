@@ -86,7 +86,7 @@ func StatusProbeServer(port int, probes ...StatusProbe) *http.Server {
 		zl.Info().Str("addr", srv.Addr).Msg("starting statusprobe server")
 
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			zl.Error().Str("error", err.Error()).Msg("error serving status probes")
+			zl.Fatal().Str("error", err.Error()).Msg("error serving status probes")
 		}
 	}()
 
