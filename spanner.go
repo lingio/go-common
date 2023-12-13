@@ -2,7 +2,7 @@ package common
 
 import (
 	"context"
-	"github.com/deepmap/oapi-codegen/pkg/types"
+	openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
 
 	// "encoding/json"
 	"fmt"
@@ -243,7 +243,7 @@ func EncodeSpannerStructFields(
 				Float64: *v,
 				Valid:   true,
 			}))
-		case types.Date:
+		case openapi_types.Date:
 			tfv.Set(reflect.ValueOf(v.Time))
 		default:
 			if !sfv.CanConvert(tf.Type) {
