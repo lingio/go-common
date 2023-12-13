@@ -2,6 +2,8 @@ package common
 
 import (
 	"context"
+	"github.com/deepmap/oapi-codegen/pkg/types"
+
 	// "encoding/json"
 	"fmt"
 	"reflect"
@@ -241,6 +243,8 @@ func EncodeSpannerStructFields(
 				Float64: *v,
 				Valid:   true,
 			}))
+		case types.Date:
+			tfv.Set(reflect.ValueOf(v.Time))
 		default:
 			if !sfv.CanConvert(tf.Type) {
 				return fmt.Errorf("cannot copy type %T -> %T", sfv.Interface(), tfv.Interface())
