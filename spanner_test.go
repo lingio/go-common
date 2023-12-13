@@ -72,7 +72,7 @@ func TestEncodeSpannerStructFields(t *testing.T) {
 			wanted: &struct{ S spanner.NullString }{},
 		},
 		{
-			name:   "oapi.Date to time.Time",
+			name:   "openapi_types.Date to time.Time",
 			source: &struct{ D openapi_types.Date }{D: openapi_types.Date{time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)}},
 			target: &struct{ D time.Time }{},
 			wanted: &struct{ D time.Time }{D: time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)},
@@ -111,6 +111,37 @@ func TestEncodeSpannerStructFields(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := EncodeSpannerStructFields(tc.source, tc.target); err != nil {
+				t.Error(err)
+				return
+			}
+			if !reflect.DeepEqual(tc.target, tc.wanted) {
+				t.Errorf("%v does not match %v", tc.target, tc.wanted)
+			}
+		})
+	}
+
+}
+
+func TestDecodeSpannerStructFields(t *testing.T) {
+	type StrType string
+
+	testcases := []struct {
+		name   string
+		source any
+		target any
+		wanted any
+	}{
+		{
+			name:   "time.Time to openapi_types.Date",
+			source: &struct{ D time.Time }{D: time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)},
+			target: &struct{ D openapi_types.Date }{},
+			wanted: &struct{ D openapi_types.Date }{D: openapi_types.Date{Time: time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)}},
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := DecodeSpannerStructFields(tc.source, tc.target); err != nil {
 				t.Error(err)
 				return
 			}
