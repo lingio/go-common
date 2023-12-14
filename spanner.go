@@ -2,6 +2,8 @@ package common
 
 import (
 	"context"
+	openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
+
 	// "encoding/json"
 	"fmt"
 	"reflect"
@@ -90,6 +92,9 @@ func DecodeSpannerStructFields(
 			if err := json.Unmarshal(data, tfv.Addr().Interface()); err != nil {
 				return err
 			}
+			continue
+		} else if sf.Type == reflect.TypeOf(time.Time{}) && tf.Type == reflect.TypeOf(openapi_types.Date{}) { // Convert from time.Time to openapi_types.Date
+			tfv.Set(reflect.ValueOf(openapi_types.Date{Time: sfv.Interface().(time.Time)}))
 			continue
 		}
 
@@ -206,6 +211,9 @@ func EncodeSpannerStructFields(
 			default:
 				return fmt.Errorf("cannot store type %T -> %T", sfv.Interface(), tfv.Interface())
 			}
+			continue
+		} else if sf.Type == reflect.TypeOf(openapi_types.Date{}) { // Convert from openapi_types.Date to time.Time
+			tfv.Set(reflect.ValueOf(sfv.Interface().(openapi_types.Date).Time))
 			continue
 		}
 
