@@ -21,6 +21,8 @@ const (
 	bucketKey  = auditLogKeyType("bucketName")
 	actionKey  = auditLogKeyType("action")
 	authKey    = auditLogKeyType("authToken")
+
+	userIDKey = auditLogKeyType("userID")
 )
 
 func FromEcho(e echo.Context) context.Context {
@@ -33,12 +35,9 @@ func FromEcho(e echo.Context) context.Context {
 	// We want to include the full token so we get all claims in the audit log.
 	auth := e.Request().Header.Get("Authorization")
 	authScheme := "Bearer"
-	l := len(authScheme)
-	if len(auth) <= l+1 || auth[:l] != authScheme {
-		// Not all requests have an auth gate.
-		return ctx
+	if l := len(authScheme); len(auth) > l+1 && auth[:l] == authScheme {
+		ctx = context.WithValue(ctx, authKey, auth[l+1:])
 	}
-	ctx = context.WithValue(ctx, authKey, auth[l+1:])
 
 	return ctx
 }
@@ -58,9 +57,18 @@ func WithAction(ctx context.Context, action string) context.Context {
 	return context.WithValue(ctx, actionKey, action)
 }
 
+func WithUserID(ctx context.Context, userid string) context.Context {
+	return context.WithValue(ctx, userIDKey, userid)
+}
+
 // AuthTokenFrom extracts the embedded JWT. Will panic if no token exists.
 func AuthTokenFrom(ctx context.Context) string {
 	return ctx.Value(authKey).(string)
+}
+
+// UserIDFrom extracts an embedded userID from WithUserID. Will panic if no userID exists.
+func UserIDFrom(ctx context.Context) string {
+	return ctx.Value(userIDKey).(string)
 }
 
 // LogAuditEvent outputs the provided app context
