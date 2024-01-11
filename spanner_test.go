@@ -1,11 +1,12 @@
 package common
 
 import (
-	"cloud.google.com/go/spanner"
-	openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
 	"reflect"
 	"testing"
 	"time"
+
+	"cloud.google.com/go/spanner"
+	openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
 )
 
 func TestEncodeSpannerStructFields(t *testing.T) {
@@ -106,6 +107,18 @@ func TestEncodeSpannerStructFields(t *testing.T) {
 			target: &struct{ S string }{},
 			wanted: &struct{ S string }{"hej"},
 		},
+		{
+			name:   "ptr to locally defined string type to nullstring",
+			source: &struct{ S *StrType }{(*StrType)(StrP("hej"))},
+			target: &struct{ S spanner.NullString }{},
+			wanted: &struct{ S spanner.NullString }{spanner.NullString{"hej", true}},
+		},
+		{
+			name:   "null locally defined string type to nullstring",
+			source: &struct{ S *StrType }{nil},
+			target: &struct{ S spanner.NullString }{},
+			wanted: &struct{ S spanner.NullString }{spanner.NullString{}},
+		},
 	}
 
 	for _, tc := range testcases {
@@ -136,6 +149,18 @@ func TestDecodeSpannerStructFields(t *testing.T) {
 			source: &struct{ D time.Time }{D: time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)},
 			target: &struct{ D openapi_types.Date }{},
 			wanted: &struct{ D openapi_types.Date }{D: openapi_types.Date{Time: time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)}},
+		},
+		{
+			name:   "locally defined string type",
+			source: &struct{ S spanner.NullString }{spanner.NullString{"hej", true}},
+			target: &struct{ S *StrType }{},
+			wanted: &struct{ S *StrType }{(*StrType)(StrP("hej"))},
+		},
+		{
+			name:   "invalid nullstring to nil ptr to locally defined string type",
+			source: &struct{ S spanner.NullString }{spanner.NullString{"hej", false}},
+			target: &struct{ S *StrType }{},
+			wanted: &struct{ S *StrType }{},
 		},
 	}
 

@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+
 	openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
 
 	// "encoding/json"
@@ -11,6 +12,11 @@ import (
 
 	"cloud.google.com/go/spanner"
 	"github.com/goccy/go-json"
+)
+
+var (
+	typeSpannerNullStr = reflect.TypeOf(spanner.NullString{})
+	typeStrPtr         = reflect.TypeOf(StrP(""))
 )
 
 // SpannerStructFieldNames returns a list with names of all struct fields.
@@ -96,6 +102,13 @@ func DecodeSpannerStructFields(
 		} else if sf.Type == reflect.TypeOf(time.Time{}) && tf.Type == reflect.TypeOf(openapi_types.Date{}) { // Convert from time.Time to openapi_types.Date
 			tfv.Set(reflect.ValueOf(openapi_types.Date{Time: sfv.Interface().(time.Time)}))
 			continue
+		} else if sf.Type == typeSpannerNullStr && typeStrPtr.ConvertibleTo(tf.Type) {
+			ns := sfv.Interface().(spanner.NullString)
+			if !ns.Valid {
+				continue
+			}
+			tfv.Set(reflect.ValueOf(&ns.StringVal).Convert(tf.Type))
+			continue
 		}
 
 		switch v := sfv.Interface().(type) {
@@ -150,7 +163,7 @@ func DecodeSpannerStructFields(
 //
 //	type User struct {
 //	   Age int
-//		Inventory struct { /* complex */ }
+//	   Inventory struct { /* complex */ }
 //	}
 //
 //	type DbUser struct {
@@ -214,6 +227,16 @@ func EncodeSpannerStructFields(
 			continue
 		} else if sf.Type == reflect.TypeOf(openapi_types.Date{}) { // Convert from openapi_types.Date to time.Time
 			tfv.Set(reflect.ValueOf(sfv.Interface().(openapi_types.Date).Time))
+			continue
+		} else if tf.Type == typeSpannerNullStr && sf.Type.ConvertibleTo(typeStrPtr) {
+			// Convert from *string-compatible type to spanner.NullString
+			// type Value string
+			// type Data struct { Optional *Value }
+			// type Encoded struct { Optional spanner.NullString }
+			tfv.Set(reflect.ValueOf(spanner.NullString{
+				StringVal: sfv.Convert(typeStrPtr).Elem().String(),
+				Valid:     true,
+			}))
 			continue
 		}
 
