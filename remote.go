@@ -159,6 +159,7 @@ func executeReq(req *http.Request) ([]byte, error) {
 		var x RemoteError
 		if err := json.Unmarshal(data, &x); err != nil {
 			return nil, NewError(resp.StatusCode).
+				Str("response", string(data)).
 				Str("host", req.URL.Host).
 				Str("url", req.URL.Path).
 				Msg("unknown remote error")
