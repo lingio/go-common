@@ -18,7 +18,7 @@
 Setting up `emulator` config:
 ```bash
 # Setup gcloud configuration
-gcloud config configurations create emulator
+gcloud config configurations create --activate emulator
 gcloud config set auth/disable_credentials true
 gcloud config set project lingio-test
 gcloud config set api_endpoint_overrides/spanner http://localhost:9020/
