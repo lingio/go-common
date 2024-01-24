@@ -32,9 +32,10 @@ gcloud components update
 gcloud emulators spanner start
 ```
 
-Finally, copying staging database to local.
+Finally, copy staging database to local emulator.
 ```bash
-./script/setup-spanner-emulator.sh gcp-project-id spanner-instance-id database-name
+cd ~/my-service/
+bash ~/go-common/script/setup-spanner-emulator.sh gcp-project-id spanner-instance-id database-name
 ```
 
 There are certain [limitations](https://cloud.google.com/spanner/docs/emulator#limitations).
@@ -44,6 +45,8 @@ There are certain [limitations](https://cloud.google.com/spanner/docs/emulator#l
 Some useful commands that `wrench` and `spanner-cli` does not cover.
 
 Especially, copying data from staging to local emulator is *much* faster than with `spanner-cli`.
+
+This program is installed by setup-spanner-emulator.sh
 
 ```bash
 go install github.com/lingio/go-common/script/spanner-tools@latest
