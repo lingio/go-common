@@ -54,11 +54,11 @@ func HttpGet(ctx context.Context, url string, bearerToken string) (_ []byte, err
 }
 
 func HttpPost(ctx context.Context, url string, body interface{}, bearerToken string) ([]byte, error) {
-	bodyBuffer, err := createBodyBuffer(body)
+	bodyReader, err := createBodyReader(body)
 	if err != nil {
 		return []byte{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bodyBuffer)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bodyReader)
 	if err != nil {
 		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
@@ -68,11 +68,11 @@ func HttpPost(ctx context.Context, url string, body interface{}, bearerToken str
 }
 
 func HttpPut(ctx context.Context, url string, body interface{}, bearerToken string) ([]byte, error) {
-	bodyBuffer, lerr := createBodyBuffer(body)
+	bodyReader, lerr := createBodyReader(body)
 	if lerr != nil {
 		return []byte{}, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, "PUT", url, bodyBuffer)
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, bodyReader)
 	if err != nil {
 		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
@@ -82,11 +82,11 @@ func HttpPut(ctx context.Context, url string, body interface{}, bearerToken stri
 }
 
 func HttpPatch(ctx context.Context, url string, body interface{}, bearerToken string) ([]byte, error) {
-	bodyBuffer, lerr := createBodyBuffer(body)
+	bodyReader, lerr := createBodyReader(body)
 	if lerr != nil {
 		return []byte{}, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bodyBuffer)
+	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bodyReader)
 	if err != nil {
 		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
@@ -114,11 +114,11 @@ func HttpGetWithApiKey(ctx context.Context, url string, apiKey string) ([]byte, 
 }
 
 func HttpPostWithApiKey(ctx context.Context, url string, body interface{}, apiKey string) ([]byte, error) {
-	bodyBuffer, lerr := createBodyBuffer(body)
+	bodyReader, lerr := createBodyReader(body)
 	if lerr != nil {
 		return []byte{}, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bodyBuffer)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bodyReader)
 	if err != nil {
 		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
@@ -128,11 +128,11 @@ func HttpPostWithApiKey(ctx context.Context, url string, body interface{}, apiKe
 }
 
 func HttpPutWithApiKey(ctx context.Context, url string, body interface{}, apiKey string) ([]byte, error) {
-	bodyBuffer, lerr := createBodyBuffer(body)
+	bodyReader, lerr := createBodyReader(body)
 	if lerr != nil {
 		return []byte{}, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, "PUT", url, bodyBuffer)
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, bodyReader)
 	if err != nil {
 		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
 	}
@@ -208,16 +208,15 @@ func setApiKey(req *http.Request, key string) {
 	req.Header.Add("x-api-key", key)
 }
 
-func createBodyBuffer(body interface{}) (*bytes.Buffer, error) {
-	var bodyBuffer *bytes.Buffer
+func createBodyReader(body interface{}) (io.Reader, error) {
 	if body != nil {
 		jsonValue, err := json.Marshal(body)
 		if err != nil {
 			return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed json marshal")
 		}
-		bodyBuffer = bytes.NewBuffer(jsonValue)
+		return bytes.NewBuffer(jsonValue), nil
 	}
-	return bodyBuffer, nil
+	return nil, nil
 }
 
 // exponentialBackoff returns a backoff function:
