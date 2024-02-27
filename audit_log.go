@@ -71,6 +71,14 @@ func UserIDFrom(ctx context.Context) string {
 	return ctx.Value(userIDKey).(string)
 }
 
+// RequestIDFromContext extracts an embedded request id. Returns zero string if not found.
+func RequestIDFromContext(ctx context.Context) string {
+	if val := ctx.Value(requestKey); val != nil {
+		return val.(string)
+	}
+	return ""
+}
+
 // LogAuditEvent outputs the provided app context
 func LogAuditEvent(ctx context.Context) {
 	evt := auditLogger.Info()
