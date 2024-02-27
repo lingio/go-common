@@ -88,9 +88,15 @@ type {{.TypeName}}CacheIngest struct {
 }
 
 // New{{$storeName}} configures a new store and initializes the provided cache if required.
-func New{{$storeName}}(mc *minio.Client, cache {{.TypeName}}Cache, serviceKey string) (*{{$storeName}}, error) {
+func New{{$storeName}}(mc *minio.Client, cache {{.TypeName}}Cache, serviceKey string, opts ...Option) (*{{$storeName}}, error) {
+	cfg := ObjectStoreConfig{
+		Bucket: "{{.BucketName}}",
+	}
+	for _, opt := range opts {
+		opt.Apply(&cfg)
+	}
 	// DefaultOjbectStoreConfig || deserialize
-	objectStore, err := common.NewObjectStore(mc, "{{.BucketName}}", {{$storeName}}Config)
+	objectStore, err := common.NewObjectStore(mc, cfg.Bucket, {{$storeName}}Config)
 	if err != nil {
 		return nil, fmt.Errorf("creating object store: %w", err)
 	}
