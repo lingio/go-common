@@ -77,8 +77,10 @@ func (s *{{$storeName}}) StoreName() string {
 //=============================================================================
 
 // Create attempts to store the provided byte blob in store.
-func (s *{{$storeName}}) Create(ctx context.Context, blob models.{{.DbTypeName}}) (*string, error) {
-	id := uuid.NewV4().String()
+func (s *{{$storeName}}) Create(ctx context.Context, id string, blob models.{{.DbTypeName}}) (*string, error) {
+	if id == "" {
+		id = uuid.NewV4().String()
+	}
 	if err := s.put(ctx, id, blob); err != nil {
 		return nil, err
 	}
@@ -103,7 +105,7 @@ func (s *{{$storeName}}) Put(ctx context.Context, id string, blob models.{{.DbTy
 // put does the heavy lifting for both Put and Create methods.
 func (s *{{$storeName}}) put(ctx context.Context, id string, blob models.{{.DbTypeName}}) error {
 	if _, err := s.backend.PutObject(ctx, {{$filename}}(id), blob); err != nil {
-		return err.Str("ID", id).Msg("failed to write to minio")
+		return common.Errorf(err).Str("ID", id).Msg("failed to write to minio")
 	}
 	return nil
 }
