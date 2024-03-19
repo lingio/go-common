@@ -220,6 +220,8 @@ func accessField(i common.IndexComponent, on string) string {
 	switch i.KeyType {
 	case "date":
 		accessor = accessor + `.Format("2006-01-02")`
+	case "month":
+		accessor = accessor + `.Format("2006-01")`
 	case "bool":
 		accessor = "strconv.FormatBool(" + deref + accessor + ")"
 	case "email":
