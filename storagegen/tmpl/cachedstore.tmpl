@@ -460,7 +460,7 @@ func (c *{{$cacheName}}) Init(ctx context.Context, backend common.LingioStore) (
 		}
 
 		// Only mark cache as initialized if we didn't encounter any error.
-		if err := c.Client.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil {
+		if err := c.Client.Set(ctx, c.InitKey(), []byte(time.Now().UTC().Format(time.RFC3339)), 0).Err(); err != nil {
 			zl.Warn().Str("component", "{{$storeName}}").Msg("could not mark cache as initialized")
 			return err
 		}
