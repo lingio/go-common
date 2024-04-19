@@ -10,7 +10,7 @@ CURRENT_VERSION=$(go list -m -json all | \
 if semvercomp ${CURRENT_VERSION} "v1.17.0"; then
  	WANTED_VERSION=$(curl -s https://api.github.com/repos/lingio/go-common/releases/latest | jq -r .tag_name)
 elif semvercomp ${CURRENT_VERSION} "v1.13.0"; then
- 	WANTED_VERSION="v1.16.3"
+ 	WANTED_VERSION="v1.16.4"
 else
 	WANTED_VERSION="v1.12.4"
 fi
