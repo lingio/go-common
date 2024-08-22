@@ -70,12 +70,12 @@ func StatusProbeServer(port int, probes ...StatusProbe) *http.Server {
 	mux.HandleFunc("/ready", newprobehandler(probeReady))
 	mux.HandleFunc("/live", newprobehandler(probeLive))
 
-	mux.HandleFunc("/pprof", pprof.Index)
-	mux.HandleFunc("/pprof/", pprof.Index)
-	mux.HandleFunc("/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("/pprof/trace", pprof.Trace)
+	mux.HandleFunc("/debug/pprof", pprof.Index)
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	srv := &http.Server{
 		Addr:    net.JoinHostPort("0.0.0.0", fmt.Sprint(port)),
