@@ -154,7 +154,7 @@ func NewChangeStreamReaderWithConfig(ctx context.Context, dbPath, streamID strin
 
 	heartbeatInterval := config.HeartbeatInterval
 	if heartbeatInterval == 0 {
-		heartbeatInterval = 10 * time.Second
+		heartbeatInterval = 1 * time.Second
 	}
 
 	return &ChangeStreamReader{
