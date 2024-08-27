@@ -41,6 +41,31 @@ func GetRole(strToken string, publicKey *rsa.PublicKey) (string, *Error) {
 	return role, nil
 }
 
+func GetPartnerAndUserFromToken(tokenStr string, publicKey *rsa.PublicKey) (partnerId string, userId string, role string, err error) {
+	jwtToken, err := parseToken(publicKey, tokenStr)
+	if err != nil {
+		return "", "", "", NewError(http.StatusUnauthorized).Msg("invalid token")
+	}
+
+	// Get the Claims
+	claims, ok := jwtToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", "", NewError(http.StatusUnauthorized).Msg("failed to parse Claims")
+	}
+
+	if _, ok := claims["partnerId"]; !ok {
+		return "", "", "", NewError(http.StatusUnauthorized).Msg("missing partnerId claim")
+	}
+	if _, ok := claims["userId"]; !ok {
+		return "", "", "", NewError(http.StatusUnauthorized).Msg("missing userId claim")
+	}
+	if _, ok := claims["role"]; !ok {
+		return "", "", "", NewError(http.StatusUnauthorized).Msg("missing role claim")
+	}
+
+	return claims["partnerId"].(string), claims["userId"].(string), claims["role"].(string), nil
+}
+
 func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, userID string, scopes []string) *Error {
 	jwtToken, err := parseToken(publicKey, tokenStr)
 	if err != nil {
