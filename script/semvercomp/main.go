@@ -15,13 +15,16 @@ func semver(v string) int {
 	var version int
 	mult := 1
 	for i := len(parts) - 1; i >= 0; i-- {
-		val, err := strconv.Atoi(parts[i])
+		part := parts[i]
+		val, err := strconv.Atoi(part)
 		if err != nil {
-			fmt.Println(err, v)
-			os.Exit(2)
+			// do not compare things with strings in them, hashes etc.
+			fmt.Println(fmt.Sprintf("Skipping non numeric part: %q in %q", part, v))
+			continue
+		} else {
+			version += val * mult
+			mult *= 10
 		}
-		version += val * mult
-		mult *= 10
 	}
 	return version
 }
