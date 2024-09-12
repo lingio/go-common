@@ -7,27 +7,54 @@ import (
 	"strings"
 )
 
-func semver(v string) int {
-	v = strings.TrimPrefix(v, "v") // v1.2.3 -> 1.2.3
-	v, _, _ = strings.Cut(v, "-")  // 1.2.3-shasha -> 1.2.3
+type semver struct {
+	major, minor, patch int
+}
 
-	parts := strings.Split(v, ".")
-	var version int
-	mult := 1
-	for i := len(parts) - 1; i >= 0; i-- {
+func (s semver) Compare(o semver) int {
+	var (
+		major = s.major - o.major
+		minor = s.minor - o.minor
+		patch = s.patch - o.patch
+	)
+	if major == 0 {
+		if minor == 0 {
+			return sign(patch)
+		}
+		return sign(minor)
+	}
+	return sign(major)
+}
+
+func sign(v int) int {
+	if v > 0 {
+		return 1
+	} else if v < 0 {
+		return -1
+	} else {
+		return 0
+	}
+}
+
+func parseSemver(s string) semver {
+	s = strings.TrimPrefix(s, "v") // v1.2.3 -> 1.2.3
+	s, _, _ = strings.Cut(s, "-")  // 1.2.3-shasha -> 1.2.3
+
+	parts := strings.Split(s, ".")
+	var v [3]int
+	for i := range v {
 		val, err := strconv.Atoi(parts[i])
 		if err != nil {
-			fmt.Println(err, v)
+			fmt.Println(err, s)
 			os.Exit(2)
 		}
-		version += val * mult
-		mult *= 10
+		v[i] = val
 	}
-	return version
+	return semver{v[0], v[1], v[2]}
 }
 
 func main() {
-	if semver(os.Args[1]) >= semver(os.Args[2]) {
+	if parseSemver(os.Args[1]).Compare(parseSemver(os.Args[2])) >= 0 {
 		os.Exit(0)
 	}
 	os.Exit(1)
