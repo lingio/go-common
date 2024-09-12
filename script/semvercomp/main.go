@@ -8,9 +8,9 @@ import (
 )
 
 func semver(v string) int {
-	if v[0] == 'v' {
-		v = v[1:]
-	}
+	v = strings.TrimPrefix(v, "v") // v1.2.3 -> 1.2.3
+	v, _, _ = strings.Cut(v, "-")  // 1.2.3-shasha -> 1.2.3
+
 	parts := strings.Split(v, ".")
 	var version int
 	mult := 1
