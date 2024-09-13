@@ -366,9 +366,7 @@ func SpannerReadTypedAndDecodeWithOptions[I any, T any](ctx context.Context, cli
 //
 // This is a low level helper. See [SpannerReadTyped] and [SpannerReadTypedAndDecode].
 func SpannerReadProjected[T any, P any](ri *spanner.RowIterator, projection func(T) (P, error)) ([]P, error) {
-	var (
-		rows []P
-	)
+	rows := make([]P, 0)
 
 	err := ri.Do(
 		func(r *spanner.Row) error {
