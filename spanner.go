@@ -374,11 +374,11 @@ func SpannerReadProjected[T any, P any](ri *spanner.RowIterator, projection func
 		func(r *spanner.Row) error {
 			var i T
 			if err := r.ToStruct(&i); err != nil {
-				return Errorf(err)
+				return Errorf(err, "spanner row to struct")
 			}
 			p, err := projection(i)
 			if err != nil {
-				return Errorf(err)
+				return Errorf(err, "spanner struct projection")
 			}
 			rows = append(rows, p)
 			return nil
