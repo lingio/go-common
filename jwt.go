@@ -42,8 +42,8 @@ func GetRole(strToken string, publicKey *rsa.PublicKey) (string, *Error) {
 }
 
 func GetPartnerAndUserFromToken(tokenStr string, publicKey *rsa.PublicKey) (partnerId string, userId string, role string, err error) {
-	jwtToken, err := parseToken(publicKey, tokenStr)
-	if err != nil {
+	jwtToken, lerr := parseToken(publicKey, tokenStr)
+	if lerr != nil {
 		return "", "", "", NewError(http.StatusUnauthorized).Msg("invalid token")
 	}
 
