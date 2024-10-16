@@ -102,6 +102,11 @@ func DecodeSpannerStructFields(
 		} else if sf.Type == reflect.TypeOf(time.Time{}) && tf.Type == reflect.TypeOf(openapi_types.Date{}) { // Convert from time.Time to openapi_types.Date
 			tfv.Set(reflect.ValueOf(openapi_types.Date{Time: sfv.Interface().(time.Time)}))
 			continue
+		} else if sf.Type == reflect.TypeOf(spanner.NullTime{}) && tf.Type == reflect.TypeOf(&openapi_types.Date{}) { // Convert from spanner.NullTime to *openapi_types.Date
+			if !sfv.Interface().(spanner.NullTime).Valid {
+				tfv.Set(reflect.ValueOf(&openapi_types.Date{Time: sfv.Interface().(spanner.NullTime).Time}))
+			}
+			continue
 		} else if sf.Type == typeSpannerNullStr && typeStrPtr.ConvertibleTo(tf.Type) {
 			ns := sfv.Interface().(spanner.NullString)
 			if !ns.Valid {
@@ -271,6 +276,11 @@ func EncodeSpannerStructFields(
 			tfv.Set(reflect.ValueOf(spanner.NullFloat64{
 				Float64: *v,
 				Valid:   true,
+			}))
+		case *openapi_types.Date:
+			tfv.Set(reflect.ValueOf(spanner.NullTime{
+				Time:  v.Time,
+				Valid: true,
 			}))
 		default:
 			if !sfv.CanConvert(tf.Type) {
