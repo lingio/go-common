@@ -123,7 +123,7 @@ fi
 echo ""
 echo " Spanner database path:"
 echo ""
-echo "	projects/lingio-test/instances/test-instance/$DATABASE"
+echo "	projects/lingio-test/instances/test-instance/databases/$DATABASE"
 echo ""
 echo "* Run service with SPANNER_EMULATOR_HOST=$SPANNER_EMULATOR_HOST env. to dial emulator,"
 echo "  and remember to use the above database path."
