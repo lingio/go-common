@@ -79,6 +79,15 @@ func TestEncodeSpannerStructFields(t *testing.T) {
 			wanted: &struct{ D time.Time }{D: time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)},
 		},
 		{
+			name:   "*openapi_types.Date to NullTime",
+			source: &struct{ D *openapi_types.Date }{D: &openapi_types.Date{time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)}},
+			target: &struct{ D spanner.NullTime }{},
+			wanted: &struct{ D spanner.NullTime }{D: spanner.NullTime{
+				Time:  time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC),
+				Valid: true,
+			}},
+		},
+		{
 			name: "complex struct",
 			source: &struct {
 				S string
@@ -149,6 +158,15 @@ func TestDecodeSpannerStructFields(t *testing.T) {
 			source: &struct{ D time.Time }{D: time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)},
 			target: &struct{ D openapi_types.Date }{},
 			wanted: &struct{ D openapi_types.Date }{D: openapi_types.Date{Time: time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)}},
+		},
+		{
+			name: "spanner.NullTime to *openapi_types.Date",
+			source: &struct{ D spanner.NullTime }{D: spanner.NullTime{
+				Time:  time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC),
+				Valid: true,
+			}},
+			target: &struct{ D *openapi_types.Date }{},
+			wanted: &struct{ D *openapi_types.Date }{D: &openapi_types.Date{Time: time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)}},
 		},
 		{
 			name:   "locally defined string type",
