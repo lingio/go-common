@@ -1,13 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
-	"strings"
 
 	"github.com/lingio/go-common/extgen/gen"
 	zl "github.com/rs/zerolog/log"
@@ -48,7 +49,16 @@ func copyModelFile(filename string, targetDir string, packageName string) {
 		zl.Fatal().Str("error", err.Error()).Msg("failed to read the models.gen.go file")
 	}
 
-	data := []byte(strings.Replace(string(input), "package models", fmt.Sprintf("package %s", packageName), 1))
+	data := bytes.ReplaceAll(input, []byte("package models"), []byte(fmt.Sprintf("package %s", packageName)))
+
+	// Some services use an older oapi-codegen that we haven't upgraded yet.
+	// The generated models file will reference a deprecated pkg.
+	// This provides an backwards-and-forwards-compatible upgrade path.
+	// Simply run `go get github.com/oapi-codegen/runtime/types` in service dir.
+	if out, err := exec.Command("go", "list", "-json").Output(); err == nil && bytes.Contains(out, []byte("github.com/oapi-codegen/runtime/types")) {
+		data = bytes.ReplaceAll(data, []byte("github.com/deepmap/oapi-codegen/pkg/types"), []byte("github.com/oapi-codegen/runtime/types"))
+	}
+
 	err = ioutil.WriteFile(fmt.Sprintf("%s/model.gen.go", targetDir), data, 0644)
 	if err != nil {
 		zl.Fatal().Str("error", err.Error()).Msg("failed to write the models.gen.go file")
