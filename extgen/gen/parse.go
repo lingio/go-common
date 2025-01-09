@@ -1,8 +1,10 @@
 package gen
 
 import (
+	"fmt"
 	"io/ioutil"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/go-yaml/yaml"
@@ -70,11 +72,12 @@ type FuncSpec struct {
 }
 
 type Spec struct {
-	Get    FuncSpec
-	Put    FuncSpec
-	Patch  FuncSpec
-	Post   FuncSpec
-	Delete FuncSpec
+	Get        FuncSpec
+	Put        FuncSpec
+	Patch      FuncSpec
+	Post       FuncSpec
+	Delete     FuncSpec
+	Parameters []InParams
 }
 
 func ReadSpec(filename string) map[string]Func {
@@ -123,31 +126,31 @@ func ReadSpec(filename string) map[string]Func {
 
 		if spec.Get.OperationID != "" {
 			funcs[spec.Get.OperationID] = Func{
-				TmplParams: templParams(path, spec.Get),
+				TmplParams: templParams(path, spec.Parameters, spec.Get),
 				HttpMethod: "GET",
 			}
 		}
 		if spec.Put.OperationID != "" {
 			funcs[spec.Put.OperationID] = Func{
-				TmplParams: templParams(path, spec.Put),
+				TmplParams: templParams(path, spec.Parameters, spec.Put),
 				HttpMethod: "PUT",
 			}
 		}
 		if spec.Patch.OperationID != "" {
 			funcs[spec.Patch.OperationID] = Func{
-				TmplParams: templParams(path, spec.Patch),
+				TmplParams: templParams(path, spec.Parameters, spec.Patch),
 				HttpMethod: "PATCH",
 			}
 		}
 		if spec.Post.OperationID != "" {
 			funcs[spec.Post.OperationID] = Func{
-				TmplParams: templParams(path, spec.Post),
+				TmplParams: templParams(path, spec.Parameters, spec.Post),
 				HttpMethod: "POST",
 			}
 		}
 		if spec.Delete.OperationID != "" {
 			funcs[spec.Delete.OperationID] = Func{
-				TmplParams: templParams(path, spec.Delete),
+				TmplParams: templParams(path, spec.Parameters, spec.Delete),
 				HttpMethod: "Delete",
 			}
 		}
@@ -160,13 +163,17 @@ type QueryParam struct {
 	Type string
 }
 
-func templParams(path string, fs FuncSpec) TmplParams {
+func templParams(path string, inheritedParams []InParams, fs FuncSpec) TmplParams {
 	params := ""
 	params2 := ""
 	queryParams := make([]QueryParam, 0)
 	numPathParams := 0
 	numQueryParams := 0
-	for _, p := range fs.Parameters {
+	for _, p := range slices.Concat(inheritedParams, fs.Parameters) {
+		if idx := strings.LastIndex(p.Name, "Id"); idx > 0 {
+			p.Name = p.Name[0:idx] + "ID"
+		}
+
 		if p.In == "path" {
 			numPathParams += 1
 			if numPathParams > 1 {
@@ -203,6 +210,12 @@ func templParams(path string, fs FuncSpec) TmplParams {
 	rt := fs.Responses.Resp200.Type
 	if fs.Responses.Resp201.Type != "" {
 		rt = fs.Responses.Resp201.Type
+	}
+
+	if fs.OperationID == "SendHubspotSupportEmail" {
+		fmt.Println("params: ", params)
+		fmt.Println("params2:", params2)
+		fmt.Println(fs)
 	}
 
 	return TmplParams{
