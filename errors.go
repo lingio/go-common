@@ -203,13 +203,13 @@ func (e *Error) ensureMapNotNil() {
 
 func (e *Error) Unwrap() []error {
 	return []error{
-		e.err,
 		// multierror-style so echo is happy
 		&echo.HTTPError{
 			Code:     e.HttpStatusCode,
 			Message:  e.Message,
 			Internal: nil,
 		},
+		e.err,
 	}
 }
 
