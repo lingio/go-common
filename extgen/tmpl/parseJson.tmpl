@@ -1,8 +1,7 @@
-if lerr != nil {
-        return nil, lerr
-    }
-    err := json.Unmarshal(b, &x)
     if err != nil {
+        return nil, err
+    }
+    if err := json.Unmarshal(b, &x); err != nil {
         return nil, common.NewErrorE(http.StatusInternalServerError, err).Msg("failed to parse response")
     }
     return &x, nil

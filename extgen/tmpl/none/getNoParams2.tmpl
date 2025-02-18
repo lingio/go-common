@@ -1,5 +1,5 @@
 // GET {{.Path}}
-func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}, token string) (*{{.RetObjType}}, error) {
+func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}) (*{{.RetObjType}}, error) {
 	var x {{.RetObjType}}
     {{- if .QueryParams}}
 
@@ -10,7 +10,7 @@ func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}, token str
 
 	// {{ .Name }} of type {{ .Type }}
 	if {{ .Name }} != nil {
-	    if query != "" {
+        if query != "" {
             query += "&"
         }
         {{- if eq .Type "boolean"}}
@@ -25,9 +25,9 @@ func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}, token str
 	    query = "?" + query
 	}
 
-	b, err := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}%s", c.Server, {{.Params2}}, query), token)
+	b, err := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}%s", c.Server, query), "")
 	{{- else}}
-	b, err := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), token)
+	b, err := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server), "")
 	{{- end}}
     {{template "parseJson.tmpl" -}}
 }
