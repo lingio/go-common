@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
+	"os"
 	"strings"
 	"text/template"
 
@@ -32,8 +32,11 @@ type TmplParams struct {
 
 func Postfix(f Func) string {
 	postfix := ""
+
 	if f.TmplParams.Params == "" {
 		postfix += "NoParams"
+	} else if f.TmplParams.Params2 == "" {
+		postfix += "NoParams2"
 	}
 	if (f.HttpMethod == "POST" || f.HttpMethod == "PUT" || f.HttpMethod == "DELETE" || f.HttpMethod == "PATCH") && f.TmplParams.BodyType == "" {
 		postfix += "NoBody"
@@ -78,7 +81,7 @@ func GenerateFromSpec(tfs fs.FS, es ExtSpec, specFilename string, outdir string)
 			zl.Fatal().Bool("tokenAuth", f.TmplParams.TokenAuth).Bool("apiKeyAuth", f.TmplParams.ApiKeyAuth).Msg("auth mismatch, expected token")
 		}
 	}
-	err := ioutil.WriteFile(fmt.Sprintf("%s/%s", outdir, "client.gen.go"), b, 0644)
+	err := os.WriteFile(fmt.Sprintf("%s/%s", outdir, "client.gen.go"), b, 0644)
 	if err != nil {
 		zl.Fatal().Str("err", err.Error()).Msg("error writing file")
 	}
@@ -106,7 +109,7 @@ func GenerateAll(tfs fs.FS, funcs []Func, outdir string, packageName string, cli
 			b = append(b, generate(tfs, fmt.Sprintf("tmpl/%s/%s%s.tmpl", "none", strings.ToLower(f.HttpMethod), postfix), f.TmplParams)...)
 		}
 	}
-	err := ioutil.WriteFile(fmt.Sprintf("%s/%s/%s", outdir, packageName, clientFilename), b, 0644)
+	err := os.WriteFile(fmt.Sprintf("%s/%s/%s", outdir, packageName, clientFilename), b, 0644)
 	if err != nil {
 		zl.Fatal().Str("err", err.Error()).Msg("error writing file")
 	}

@@ -5,7 +5,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -44,7 +43,7 @@ func main() {
 }
 
 func copyModelFile(filename string, targetDir string, packageName string) {
-	input, err := ioutil.ReadFile(filename)
+	input, err := os.ReadFile(filename)
 	if err != nil {
 		zl.Fatal().Str("error", err.Error()).Msg("failed to read the models.gen.go file")
 	}
@@ -59,14 +58,14 @@ func copyModelFile(filename string, targetDir string, packageName string) {
 		data = bytes.ReplaceAll(data, []byte("github.com/deepmap/oapi-codegen/pkg/types"), []byte("github.com/oapi-codegen/runtime/types"))
 	}
 
-	err = ioutil.WriteFile(fmt.Sprintf("%s/model.gen.go", targetDir), data, 0644)
+	err = os.WriteFile(fmt.Sprintf("%s/model.gen.go", targetDir), data, 0644)
 	if err != nil {
 		zl.Fatal().Str("error", err.Error()).Msg("failed to write the models.gen.go file")
 	}
 }
 
 func readExtConfig(filename string) gen.ExtSpec {
-	file, err := ioutil.ReadFile(filename)
+	file, err := os.ReadFile(filename)
 	if err != nil {
 		zl.Fatal().Str("err", err.Error()).Str("filename", filename).Msg("failed to load ext spec file")
 	}
@@ -79,13 +78,13 @@ func readExtConfig(filename string) gen.ExtSpec {
 }
 
 func copyVersionFile(sourceDir string, targetDir string) {
-	src, err := ioutil.ReadFile(fmt.Sprintf("%s/build/version", sourceDir))
+	src, err := os.ReadFile(fmt.Sprintf("%s/build/version", sourceDir))
 	if err != nil {
 		zl.Warn().Str("err", err.Error()).Msg("failed to load version file")
 		return
 	}
 
-	err = ioutil.WriteFile(fmt.Sprintf("%s/version", targetDir), src, 0644)
+	err = os.WriteFile(fmt.Sprintf("%s/version", targetDir), src, 0644)
 	if err != nil {
 		zl.Warn().Str("err", err.Error()).Msg("failed to write version file")
 	}

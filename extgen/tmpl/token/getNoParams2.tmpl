@@ -25,9 +25,9 @@ func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}, token str
 	    query = "?" + query
 	}
 
-	b, err := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}%s", c.Server, {{.Params2}}, query), token)
+	b, err := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}%s", c.Server, query), token)
 	{{- else}}
-	b, err := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), token)
+	b, err := common.HttpGet(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server), token)
 	{{- end}}
     {{template "parseJson.tmpl" -}}
 }

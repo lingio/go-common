@@ -1,9 +1,6 @@
 // PUT {{.Path}}
 func (c *LingioClient) {{.FuncName}}(ctx context.Context, token string) error {
-	_, lerr := common.HttpPutNoBody(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server), token)
-	if lerr != nil {
-		return lerr
-	}
-	return nil
+	b, err := common.HttpPutNoBody(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server), token)
+    {{template "parseJson.tmpl" -}}
 }
 
