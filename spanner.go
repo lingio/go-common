@@ -373,6 +373,36 @@ func SpannerReadTypedAndDecodeWithOptions[I any, T any](ctx context.Context, cli
 	return SpannerReadProjected(it, ProjectDecoded[I, T])
 }
 
+// SpannerQueryTyped returns all rows from query, deserialized to struct T.
+func SpannerQueryTyped[T any](ctx context.Context, cli *spanner.Client, query string, params map[string]interface{}) ([]T, error) {
+	txn := cli.ReadOnlyTransaction()
+	defer txn.Close()
+
+	stmt := spanner.Statement{
+		SQL:    query,
+		Params: params,
+	}
+
+	it := txn.Query(ctx, stmt)
+	return SpannerReadProjected(it, ProjectIdentity[T])
+}
+
+// SpannerQueryTypedAndDecode returns all rows from query, deserialized to
+// struct I and then decoded into struct T using
+// [DecodeSpannerStructField].
+func SpannerQueryTypedAndDecode[I any, T any](ctx context.Context, cli *spanner.Client, query string, params map[string]interface{}) ([]T, error) {
+	txn := cli.ReadOnlyTransaction()
+	defer txn.Close()
+
+	stmt := spanner.Statement{
+		SQL:    query,
+		Params: params,
+	}
+
+	it := txn.Query(ctx, stmt)
+	return SpannerReadProjected(it, ProjectDecoded[I, T])
+}
+
 // SpannerReadProjected returns projection `T -> P` of all rows in iterator.
 //
 // This is a low level helper. See [SpannerReadTyped] and [SpannerReadTypedAndDecode].
