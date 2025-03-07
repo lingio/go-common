@@ -1,7 +1,9 @@
 // PUT {{.Path}}
-func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}, body {{.BodyType}}) (*{{.RetObjType}}, error) {
-	var x {{.RetObjType}}
-	b, err := common.HttpPut(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), body, "")
-    {{template "parseJson.tmpl" -}}
+func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}, body {{.BodyType}}) error {
+	_, err := common.HttpPut(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server, {{.Params2}}), body, "")
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
