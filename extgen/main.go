@@ -54,8 +54,16 @@ func copyModelFile(filename string, targetDir string, packageName string) {
 	// The generated models file will reference a deprecated pkg.
 	// This provides an backwards-and-forwards-compatible upgrade path.
 	// Simply run `go get github.com/oapi-codegen/runtime/types` in service dir.
-	if out, err := exec.Command("go", "list", "-json").Output(); err == nil && bytes.Contains(out, []byte("github.com/oapi-codegen/runtime/types")) {
-		data = bytes.ReplaceAll(data, []byte("github.com/deepmap/oapi-codegen/pkg/types"), []byte("github.com/oapi-codegen/runtime/types"))
+	{
+		var (
+			out, err = exec.Command("go", "list", "-json").Output()
+		)
+		if err == nil && bytes.Contains(out, []byte("\"github.com/oapi-codegen/runtime/types\"")) {
+			data = bytes.ReplaceAll(data, []byte("github.com/deepmap/oapi-codegen/pkg/types"), []byte("github.com/oapi-codegen/runtime/types"))
+		}
+		if err == nil && bytes.Contains(out, []byte("\"github.com/oapi-codegen/runtime\"")) {
+			data = bytes.ReplaceAll(data, []byte("github.com/deepmap/oapi-codegen/pkg/runtime"), []byte("github.com/oapi-codegen/runtime"))
+		}
 	}
 
 	err = os.WriteFile(fmt.Sprintf("%s/model.gen.go", targetDir), data, 0644)
