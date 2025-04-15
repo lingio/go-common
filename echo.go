@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/deepmap/oapi-codegen/pkg/middleware"
+	middleware "github.com/oapi-codegen/echo-middleware"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/labstack/echo-contrib/prometheus"

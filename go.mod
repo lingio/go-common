@@ -7,8 +7,7 @@ toolchain go1.23.0
 require (
 	cloud.google.com/go/spanner v1.67.0
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.20.0
-	github.com/deepmap/oapi-codegen v1.15.0
-	github.com/getkin/kin-openapi v0.120.0
+	github.com/getkin/kin-openapi v0.124.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-redsync/redsync/v4 v4.10.0
 	github.com/go-yaml/yaml v2.1.0+incompatible
@@ -16,8 +15,9 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.0.0
 	github.com/google/go-cmp v0.6.0
 	github.com/labstack/echo-contrib v0.15.0
-	github.com/labstack/echo/v4 v4.11.4
+	github.com/labstack/echo/v4 v4.12.0
 	github.com/minio/minio-go/v7 v7.0.63
+	github.com/oapi-codegen/echo-middleware v1.0.2
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/rs/zerolog v1.31.0
 	github.com/satori/go.uuid v1.2.0
@@ -59,8 +59,8 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-openapi/jsonpointer v0.20.0 // indirect
-	github.com/go-openapi/swag v0.22.4 // indirect
+	github.com/go-openapi/jsonpointer v0.20.2 // indirect
+	github.com/go-openapi/swag v0.22.8 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -69,7 +69,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.13.0 // indirect
-	github.com/gorilla/mux v1.8.0 // indirect
+	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.18.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
