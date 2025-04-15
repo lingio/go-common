@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/spanner"
-	openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 func TestEncodeSpannerStructFields(t *testing.T) {

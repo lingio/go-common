@@ -3,7 +3,7 @@ package common
 import (
 	"time"
 
-	openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 func Bool(b *bool) bool {
