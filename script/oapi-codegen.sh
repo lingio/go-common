@@ -13,9 +13,9 @@ go install ./cmd/oapi-codegen
 
 >/dev/null pushd build
 shaBefore=$(sha1sum ../restapi/spec.gen.go)
-oapi-codegen -package models -service ${SERVICE_NAME} -generate types ../spec.yaml > ../models/model.gen.go
-oapi-codegen -package restapi -service ${SERVICE_NAME} -generate spec ../spec.yaml > ../restapi/spec.gen.go
-oapi-codegen -package restapi -service ${SERVICE_NAME} -generate server ../spec.yaml > ../restapi/server.gen.go
+oapi-codegen -package models -service ${SERVICE_NAME} -generate types ../restapi/spec.yaml > ../models/model.gen.go
+oapi-codegen -package restapi -service ${SERVICE_NAME} -generate spec ../restapi/spec.yaml > ../restapi/spec.gen.go
+oapi-codegen -package restapi -service ${SERVICE_NAME} -generate server ../restapi/spec.yaml > ../restapi/server.gen.go
 shaAfter=$(sha1sum ../restapi/spec.gen.go)
 if [[ "$shaBefore" != "$shaAfter" ]]
 then
