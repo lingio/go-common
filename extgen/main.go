@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 
 	"github.com/lingio/go-common/extgen/gen"
 	zl "github.com/rs/zerolog/log"
@@ -33,8 +34,13 @@ func main() {
 	targetDir := path.Dir(os.Args[1])
 	spec := os.Args[2]
 
+	absSpecPath, err := filepath.Abs(spec)
+	if err != nil {
+		zl.Fatal().Str("err", err.Error()).Str("spec", spec).Msg("failed to get absolute path")
+	}
+	srcDir := filepath.Dir(filepath.Dir(absSpecPath))
+
 	// Copy the model.gen.go file and modify the packagename to match its new destination
-	srcDir := path.Dir(os.Args[2])
 	modelFile := fmt.Sprintf("%s/models/model.gen.go", srcDir)
 	copyModelFile(modelFile, targetDir, path.Base(targetDir))
 
