@@ -61,14 +61,20 @@ func WithUserID(ctx context.Context, userid string) context.Context {
 	return context.WithValue(ctx, userIDKey, userid)
 }
 
-// AuthTokenFrom extracts the embedded JWT. Will panic if no token exists.
+// AuthTokenFrom extracts the embedded JWT. Returns zero string if not found.
 func AuthTokenFrom(ctx context.Context) string {
-	return ctx.Value(authKey).(string)
+	if val := ctx.Value(authKey); val != nil {
+		return val.(string)
+	}
+	return ""
 }
 
-// UserIDFrom extracts an embedded userID from WithUserID. Will panic if no userID exists.
+// UserIDFrom extracts an embedded userID from WithUserID. Returns zero string if not found.
 func UserIDFrom(ctx context.Context) string {
-	return ctx.Value(userIDKey).(string)
+	if val := ctx.Value(userIDKey); val != nil {
+		return val.(string)
+	}
+	return ""
 }
 
 // RequestIDFromContext extracts an embedded request id. Returns zero string if not found.
