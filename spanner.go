@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"google.golang.org/grpc/codes"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -291,6 +292,23 @@ func EncodeSpannerStructFields(
 		}
 	}
 	return nil
+}
+
+func SpannerReadStructAndDecode[I any, T any](ctx context.Context, cli *spanner.Client, table string, key spanner.Key, target *T) error {
+	var dest I
+	row, err := cli.Single().ReadRow(ctx, table, key, SpannerStructFieldNames(dest))
+	if err != nil {
+		if spanner.ErrCode(err) == codes.NotFound {
+			return Errorf(fmt.Errorf("%w: %v", ErrObjectNotFound, err))
+		}
+		return Errorf(err)
+	}
+
+	if err := row.ToStruct(&dest); err != nil {
+		return Errorf(err)
+	}
+
+	return DecodeSpannerStructFields(dest, target)
 }
 
 // SpannerReadTyped returns all rows in keySet from primary index,
