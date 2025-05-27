@@ -2,9 +2,8 @@ package common
 
 import (
 	"context"
-	"google.golang.org/grpc/codes"
-
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	"google.golang.org/grpc/codes"
 
 	// "encoding/json"
 	"fmt"
@@ -299,7 +298,7 @@ func SpannerReadStructAndDecode[I any, T any](ctx context.Context, cli *spanner.
 	row, err := cli.Single().ReadRow(ctx, table, key, SpannerStructFieldNames(dest))
 	if err != nil {
 		if spanner.ErrCode(err) == codes.NotFound {
-			return Errorf(fmt.Errorf("%w: %v", ErrObjectNotFound, err))
+			return Errorf(ErrObjectNotFound)
 		}
 		return Errorf(err)
 	}
