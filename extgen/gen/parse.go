@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/go-yaml/yaml"
@@ -34,6 +35,9 @@ type reqBody struct {
 }
 
 type resp struct {
+	Content struct {
+		Json ajson `yaml:"application/json"`
+	}
 	Type string `yaml:"$ref"`
 }
 
@@ -166,6 +170,10 @@ type QueryParam struct {
 }
 
 func templParams(path string, inheritedParams []InParams, fs FuncSpec) TmplParams {
+	if s, err := strconv.Unquote(path); err == nil {
+		path = s
+	}
+
 	params := ""
 	params2 := ""
 	queryParams := make([]QueryParam, 0)
@@ -212,6 +220,12 @@ func templParams(path string, inheritedParams []InParams, fs FuncSpec) TmplParam
 	rt := fs.Responses.Resp200.Type
 	if fs.Responses.Resp201.Type != "" {
 		rt = fs.Responses.Resp201.Type
+	}
+	if rt == "" {
+		rt = fs.Responses.Resp200.Content.Json.Schema.Type
+		if fs.Responses.Resp201.Content.Json.Schema.Type != "" {
+			rt = fs.Responses.Resp201.Content.Json.Schema.Type
+		}
 	}
 
 	if fs.OperationID == "SendHubspotSupportEmail" {
