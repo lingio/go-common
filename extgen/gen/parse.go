@@ -102,7 +102,6 @@ func ReadSpec(filename string) map[string]Func {
 		if inPaths && (strings.HasPrefix(trimmedRow, "/") || strings.HasPrefix(trimmedRow, "'/") || strings.HasPrefix(trimmedRow, "\"/")) {
 			p := strings.TrimSuffix(trimmedRow, ":")
 			paths = append(paths, p)
-			fmt.Println(len(paths)-1, p)
 			if funcStr != "" {
 				endpointStrs = append(endpointStrs, funcStr)
 			}
