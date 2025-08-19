@@ -15,12 +15,12 @@ import (
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	middleware "github.com/oapi-codegen/echo-middleware"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/labstack/echo-contrib/prometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
+	middleware "github.com/oapi-codegen/echo-middleware"
 	"github.com/rs/zerolog"
 	zl "github.com/rs/zerolog/log"
 )
@@ -38,6 +38,9 @@ type EchoConfig struct {
 	// Hard to autodetect where server is running so programmer's responsibility
 	// specify request log output format. Defaults to GCP-style if nil.
 	RequestLogFormatter RequestLogFormatter
+
+	// Set to true to disable request validation middleware
+	SkipRequestValidation bool
 }
 
 var DefaultEchoConfig = EchoConfig{
@@ -137,12 +140,14 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 	p.Use(e) // add prometheus /metrics endpoint
 
 	// Set up request validation
-	e.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
-		Options: openapi3filter.Options{
-			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
-		},
-		Skipper: devopsRequestSkipper,
-	}))
+	if !config.SkipRequestValidation {
+		e.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
+			Options: openapi3filter.Options{
+				AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
+			},
+			Skipper: devopsRequestSkipper,
+		}))
+	}
 
 	// Always have a ping endpoint.
 	e.GET("/ping", echo.WrapHandler(http.HandlerFunc(ping)))
