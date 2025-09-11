@@ -81,6 +81,9 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 	isPingRequest := func(ctx echo.Context) bool {
 		return ctx.Path() == "/ping"
 	}
+	isOptionsRequest := func(ctx echo.Context) bool {
+		return ctx.Request().Method == http.MethodOptions
+	}
 	devopsRequestSkipper := combineSkippers(isMetricRequest, isOpsRequest, isPingRequest)
 
 	// Set up a basic Echo router and its middlewares
@@ -97,7 +100,7 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 
 	e.Use(otelecho.Middleware(
 		swagger.Info.Title,
-		otelecho.WithSkipper(devopsRequestSkipper),
+		otelecho.WithSkipper(combineSkippers(devopsRequestSkipper, isOptionsRequest)),
 		otelecho.WithTracerProvider(otel.GetTracerProvider()),
 	))
 
