@@ -3,11 +3,12 @@ package common
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"math"
 	"net/http"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )

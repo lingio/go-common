@@ -69,6 +69,7 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
+	e.JSONSerializer = &GoccyJSONSerializer{}
 
 	// Init Prometheus
 	p := prometheus.NewPrometheus("echo", nil)
