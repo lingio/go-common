@@ -29,6 +29,7 @@ var commonClient = http.Client{
 		IdleConnTimeout:       time.Second * 30,
 		ResponseHeaderTimeout: time.Second * 20,
 		TLSHandshakeTimeout:   time.Second * 10,
+		// transport transparently handles gzip de/compression
 	}, otelhttp.WithTracerProvider(nil)),
 }
 
