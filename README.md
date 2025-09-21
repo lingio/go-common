@@ -6,6 +6,10 @@
 - Debugging
   - go tool pprof
 
+```
+go install golang.org/x/tools/cmd/goimports@latest
+```
+
 ## spanner
 
 ### setup local spanner
