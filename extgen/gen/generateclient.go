@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"strings"
 	"text/template"
 
@@ -81,10 +82,12 @@ func GenerateFromSpec(tfs fs.FS, es ExtSpec, specFilename string, outdir string)
 			zl.Fatal().Bool("tokenAuth", f.TmplParams.TokenAuth).Bool("apiKeyAuth", f.TmplParams.ApiKeyAuth).Msg("auth mismatch, expected token")
 		}
 	}
-	err := os.WriteFile(fmt.Sprintf("%s/%s", outdir, "client.gen.go"), b, 0644)
+	genfile := fmt.Sprintf("%s/%s", outdir, "client.gen.go")
+	err := os.WriteFile(genfile, b, 0644)
 	if err != nil {
 		zl.Fatal().Str("err", err.Error()).Msg("error writing file")
 	}
+	postprocess(genfile)
 }
 
 func GenerateAll(tfs fs.FS, funcs []Func, outdir string, packageName string, clientFilename string) {
@@ -135,4 +138,46 @@ func generate(fs fs.FS, tmplFilename string, params TmplParams) []byte {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err2.Error()).Msg("failed to generate message")
 	}
 	return b.Bytes()
+}
+
+func postprocess(filepath string) error {
+	var gofmt bool
+	var imports bool
+	// If go is installed the standard way from https://golang.org/doc/install
+	// then we will detect at least Linux and MacOS. Special case for Ubuntu snap.
+	for _, gobin := range []string{"go", "/snap/bin/go", "/usr/local/go/bin/go"} {
+		exe, err := exec.LookPath(gobin)
+		if err != nil {
+			continue
+		}
+
+		cmd := exec.Command(exe, "fmt", filepath)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("format '%s': %w", filepath, err)
+		}
+		gofmt = true
+		break
+	}
+
+	for _, goimp := range []string{"goimports", "/snap/bin/goimports", "/usr/local/go/bin/goimports"} {
+		exe, err := exec.LookPath(goimp)
+		if err != nil {
+			continue
+		}
+
+		cmd := exec.Command(exe, "-w", "-srcdir", filepath, filepath)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("goimport '%s': %w", filepath, err)
+		}
+		imports = true
+		break
+	}
+
+	if !gofmt {
+		zl.Warn().Str("file", filepath).Msg("skipping go fmt")
+	}
+	if !imports {
+		zl.Warn().Str("file", filepath).Msg("skipping goimports")
+	}
+	return nil
 }
