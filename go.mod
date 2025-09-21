@@ -1,8 +1,6 @@
 module github.com/lingio/go-common
 
-go 1.21
-
-toolchain go1.23.0
+go 1.24
 
 require (
 	cloud.google.com/go/spanner v1.67.0
