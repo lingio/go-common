@@ -16,7 +16,7 @@ func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}) (*{{.RetO
         {{- if eq .Type "boolean"}}
             query += fmt.Sprintf("{{ .Name }}=%t", *{{ .Name }})
         {{- else }}
-            query += fmt.Sprintf("{{ .Name }}=%s", *{{ .Name }})
+            query += fmt.Sprintf("{{ .Name }}=%v", *{{ .Name }})
         {{- end}}
         }
 	{{- end}}
