@@ -273,12 +273,20 @@ func templetize(path string) string {
 
 func lastPart(s string) string {
 	strs := strings.Split(s, "/")
-	return strs[len(strs)-1]
+	x := strs[len(strs)-1]
+	if strings.HasSuffix(x, "Id") {
+		x = x[:len(x)-2] + "ID"
+	} else if strings.HasSuffix(x, "Ids") {
+		x = x[:len(x)-3] + "IDs"
+	}
+	return x
 }
 
 func gotype(s string) string {
 	if s == "boolean" {
 		return "bool"
+	} else if s == "integer" {
+		return "int32"
 	}
 	return s
 }
