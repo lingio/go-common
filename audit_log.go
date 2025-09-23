@@ -36,10 +36,15 @@ func FromEcho(e echo.Context) context.Context {
 	auth := e.Request().Header.Get("Authorization")
 	authScheme := "Bearer"
 	if l := len(authScheme); len(auth) > l+1 && auth[:l] == authScheme {
-		ctx = context.WithValue(ctx, authKey, auth[l+1:])
+		ctx = WithToken(ctx, auth[l+1:])
 	}
 
 	return ctx
+}
+
+// WithToken returns a copy of the passed context with the jwt.
+func WithToken(ctx context.Context, jwt string) context.Context {
+	return context.WithValue(ctx, authKey, jwt)
 }
 
 // WithObject returns a copy of the passed context with the object ID.
