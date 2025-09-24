@@ -40,6 +40,8 @@ func LangCodeName(langCode string) (column string, err error) {
 		column = "Bosnian"
 	case "vi":
 		column = "Vietnamese"
+	case "sq":
+		column = "Albanian"
 	default:
 		err = NewError(http.StatusBadRequest).Msg("langCode not valid").Str("langCode", langCode)
 	}
@@ -84,6 +86,8 @@ func LangCode(lang string) string {
 		return "bs"
 	case "Vietnamese":
 		return "vi"
+	case "Albanian":
+		return "sq"
 	default:
 		panic("lang not valid: " + lang)
 	}
