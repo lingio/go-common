@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"math"
 	"net/http"
@@ -146,7 +147,12 @@ func HttpPutWithApiKey(ctx context.Context, url string, body interface{}, apiKey
 func executeReq(req *http.Request) ([]byte, error) {
 	resp, err := commonClient.Do(req)
 	if err != nil {
-		return nil, NewErrorE(http.StatusBadGateway, err).
+		var code = http.StatusBadGateway
+		if errors.Is(err, context.Canceled) {
+			code = 499 // client closed request (so who are we returning to anyway...)
+		}
+
+		return nil, NewErrorE(code, err).
 			Str("host", req.URL.Host).
 			Str("url", req.URL.Path).
 			Msg("error calling remote service")
