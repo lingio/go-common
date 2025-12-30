@@ -13,6 +13,10 @@ func Bool(b *bool) bool {
 	return false
 }
 
+func BoolP(b bool) *bool {
+	return &b
+}
+
 func Int(i *int) int {
 	if i == nil {
 		return 0
