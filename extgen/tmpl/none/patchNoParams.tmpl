@@ -1,0 +1,9 @@
+// PATCH {{.Path}}
+func (c *LingioClient) {{.FuncName}}(ctx context.Context, body {{.BodyType}}) error {
+	_, err := common.HttpPatch(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server), body, "")
+    if err != nil {
+        return err
+    }
+    return nil
+}
+

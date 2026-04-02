@@ -1,8 +1,7 @@
 package gen
 
 import (
-	"fmt"
-	"io/ioutil"
+	"os"
 	"regexp"
 	"slices"
 	"strconv"
@@ -11,6 +10,9 @@ import (
 	"github.com/go-yaml/yaml"
 	zl "github.com/rs/zerolog/log"
 )
+
+var reIds = regexp.MustCompile(`Ids([A-Z]|$)`)
+var reId = regexp.MustCompile(`Id([A-Z]|$)`)
 
 type InParams struct {
 	In          string
@@ -86,7 +88,7 @@ type Spec struct {
 
 func ReadSpec(filename string) map[string]Func {
 
-	b, err := ioutil.ReadFile(filename)
+	b, err := os.ReadFile(filename)
 	if err != nil {
 		zl.Fatal().Err(err).Str("filename", filename).Msg("failed to read spec")
 	}
@@ -228,13 +230,7 @@ func templParams(path string, inheritedParams []InParams, fs FuncSpec) TmplParam
 		}
 	}
 
-	if fs.OperationID == "SendHubspotSupportEmail" {
-		fmt.Println("params: ", params)
-		fmt.Println("params2:", params2)
-		fmt.Println(fs)
-	}
-
-	return TmplParams{
+return TmplParams{
 		Path:         path,
 		PathTemplate: templetize(path),
 		FuncName:     fs.OperationID,
@@ -274,11 +270,8 @@ func templetize(path string) string {
 func lastPart(s string) string {
 	strs := strings.Split(s, "/")
 	x := strs[len(strs)-1]
-	if strings.HasSuffix(x, "Id") {
-		x = x[:len(x)-2] + "ID"
-	} else if strings.HasSuffix(x, "Ids") {
-		x = x[:len(x)-3] + "IDs"
-	}
+	x = reIds.ReplaceAllString(x, "IDs$1")
+	x = reId.ReplaceAllString(x, "ID$1")
 	return x
 }
 
