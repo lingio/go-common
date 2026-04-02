@@ -1,4 +1,4 @@
-// Delete {{.Path}}
+// DELETE {{.Path}}
 func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}, token string) (*{{.RetObjType}}, error) {
 	var x {{.RetObjType}}
     {{- if .QueryParams}}
@@ -16,7 +16,7 @@ func (c *LingioClient) {{.FuncName}}(ctx context.Context, {{.Params}}, token str
         {{- if eq .Type "boolean"}}
             query += fmt.Sprintf("{{ .Name }}=%t", *{{ .Name }})
         {{- else }}
-            query += fmt.Sprintf("{{ .Name }}=%s", *{{ .Name }})
+            query += fmt.Sprintf("{{ .Name }}=%v", *{{ .Name }})
         {{- end}}
         }
 	{{- end}}

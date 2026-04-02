@@ -98,6 +98,24 @@ func HttpPatch(ctx context.Context, url string, body interface{}, bearerToken st
 	return executeReq(req)
 }
 
+func HttpPutNoBody(ctx context.Context, url string, bearerToken string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, nil)
+	if err != nil {
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
+	}
+	setBearerToken(req, bearerToken)
+	return executeReq(req)
+}
+
+func HttpPatchNoBody(ctx context.Context, url string, bearerToken string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "PATCH", url, nil)
+	if err != nil {
+		return nil, NewErrorE(http.StatusInternalServerError, err).Msg("failed to create request")
+	}
+	setBearerToken(req, bearerToken)
+	return executeReq(req)
+}
+
 func HttpDelete(ctx context.Context, url string, bearerToken string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
 	if err != nil {

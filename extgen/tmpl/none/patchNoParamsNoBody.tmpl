@@ -1,0 +1,6 @@
+// PATCH {{.Path}}
+func (c *LingioClient) {{.FuncName}}(ctx context.Context) error {
+	b, err := common.HttpPatchNoBody(ctx, fmt.Sprintf("%s{{.PathTemplate}}", c.Server), "")
+    {{template "parseJson.tmpl" -}}
+}
+

@@ -99,7 +99,7 @@ func GenerateAll(tfs fs.FS, funcs []Func, outdir string, packageName string, cli
 		if f.TmplParams.Params == "" {
 			postfix += "NoParams"
 		}
-		if (f.HttpMethod == "POST" || f.HttpMethod == "PUT" || f.HttpMethod == "DELETE") && f.TmplParams.BodyType == "" {
+		if (f.HttpMethod == "POST" || f.HttpMethod == "PUT" || f.HttpMethod == "DELETE" || f.HttpMethod == "PATCH") && f.TmplParams.BodyType == "" {
 			postfix += "NoBody"
 		}
 		if f.TmplParams.TokenAuth {
