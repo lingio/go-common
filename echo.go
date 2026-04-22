@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/otel"
@@ -70,6 +71,17 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 	e.HideBanner = true
 	e.HidePort = true
 	e.JSONSerializer = &GoccyJSONSerializer{}
+
+	// Reject requests with invalid UTF-8 in the path before any middleware
+	// (including Prometheus) sees them — prevents panics from scanner bots.
+	e.Pre(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if !utf8.ValidString(c.Request().URL.Path) {
+				return echo.NewHTTPError(http.StatusBadRequest, "invalid request path")
+			}
+			return next(c)
+		}
+	})
 
 	// Init Prometheus
 	p := prometheus.NewPrometheus("echo", nil)

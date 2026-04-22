@@ -27,3 +27,7 @@ _testmain.go
 
 .vscode/
 /vendor/
+
+# Compiled binaries (Go executables without extension)
+extgen/extgen
+storagegen/storagegen
