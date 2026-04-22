@@ -167,8 +167,9 @@ func ReadSpec(filename string) map[string]Func {
 }
 
 type QueryParam struct {
-	Name string
-	Type string
+	Name     string
+	Type     string
+	Required bool
 }
 
 func templParams(path string, inheritedParams []InParams, fs FuncSpec) TmplParams {
@@ -199,10 +200,15 @@ func templParams(path string, inheritedParams []InParams, fs FuncSpec) TmplParam
 			if numPathParams+numQueryParams > 1 {
 				params += ", "
 			}
-			params += p.Name + " *" + gotype(p.Schema.Type)
+			if p.Required {
+				params += p.Name + " " + gotype(p.Schema.Type)
+			} else {
+				params += p.Name + " *" + gotype(p.Schema.Type)
+			}
 			queryParams = append(queryParams, QueryParam{
-				Name: p.Name,
-				Type: p.Schema.Type,
+				Name:     p.Name,
+				Type:     p.Schema.Type,
+				Required: p.Required,
 			})
 		} else {
 			zl.Fatal().Str("parameters.in", p.In).Msg("unexpected value for parameter type")
@@ -230,7 +236,7 @@ func templParams(path string, inheritedParams []InParams, fs FuncSpec) TmplParam
 		}
 	}
 
-return TmplParams{
+	return TmplParams{
 		Path:         path,
 		PathTemplate: templetize(path),
 		FuncName:     fs.OperationID,

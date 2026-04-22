@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"text/template"
 
@@ -126,7 +127,15 @@ func generateBeginning(tfs fs.FS, packageName string) []byte {
 }
 
 func generate(fs fs.FS, tmplFilename string, params TmplParams) []byte {
-	tpl, err := template.ParseFS(fs, tmplFilename, "tmpl/parseJson.tmpl", "tmpl/beginning.tmpl", "tmpl/client.tmpl")
+	tpl, err := template.New("").Funcs(template.FuncMap{
+		"Format": func(qp QueryParam) string {
+			if qp.Type == "boolean" {
+				return "%t"
+			}
+			return "%v"
+		},
+	}).ParseFS(fs, tmplFilename, "tmpl/parseJson.tmpl", "tmpl/beginning.tmpl", "tmpl/client.tmpl")
+
 	if err != nil {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err.Error()).Msg("failed to load message template")
 	} else if tpl == nil {
@@ -134,7 +143,7 @@ func generate(fs fs.FS, tmplFilename string, params TmplParams) []byte {
 	}
 
 	var b bytes.Buffer
-	if err2 := tpl.Execute(&b, params); err2 != nil {
+	if err2 := tpl.ExecuteTemplate(&b, path.Base(tmplFilename), params); err2 != nil {
 		zl.Fatal().Str("tmplFilename", tmplFilename).Str("err", err2.Error()).Msg("failed to generate message")
 	}
 	return b.Bytes()
