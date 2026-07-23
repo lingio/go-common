@@ -12,9 +12,9 @@ import (
 	"github.com/lingio/go-common/redistest/models"
 
 	"github.com/go-redis/redis/v8"
+	uuid "github.com/google/uuid"
 	"github.com/lingio/go-common"
 	"github.com/minio/minio-go/v7"
-	uuid "github.com/satori/go.uuid"
 
 	zl "github.com/rs/zerolog/log"
 )
