@@ -10,7 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func TestTokenClaimsRoundTrip(t *testing.T) {
+func TestAuthClaimsRoundTrip(t *testing.T) {
 	cryptotest.SetGlobalRandom(t, 0)
 	privateKey, _ := rsa.GenerateKey(nil, 1024)
 
@@ -20,7 +20,7 @@ func TestTokenClaimsRoundTrip(t *testing.T) {
 		iss = time.Now()
 	)
 
-	userToken := jwt.NewWithClaims(jwt.SigningMethodRS512, TokenClaims{
+	userToken := jwt.NewWithClaims(jwt.SigningMethodRS512, AuthClaims{
 		PartnerID:     "pid",
 		UserID:        "uid",
 		DeviceID:      "did",
@@ -36,7 +36,7 @@ func TestTokenClaimsRoundTrip(t *testing.T) {
 	}
 
 	var (
-		c TokenClaims
+		c AuthClaims
 	)
 	_, err = jwt.ParseWithClaims(str, &c, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
@@ -71,14 +71,14 @@ func TestTokenClaimsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestParseIssuedAtAsString(t *testing.T) {
+func TestAuthClaimParseIssuedAtAsString(t *testing.T) {
 	cryptotest.SetGlobalRandom(t, 0)
 	privateKey, _ := rsa.GenerateKey(nil, 1024)
 
 	x := `eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJwYXJ0bmVySWQiOiJwaWQiLCJ1c2VySWQiOiJ1aWQiLCJkZXZpY2VJZCI6ImRpZCIsInJvbGUiOiJyb2xlIiwiZXhwIjpudWxsLCJjcmVhdGVkIjoiMTc4NTk2NTMxOCJ9.xGMVXEkQXZxU20Lc2yFfceEhNNw07pHUQ6EVfaV_VLFxjb6__SwaEA8kYOGSYbiwrgqRw8psV1eJ22AW7GRLWByHduiDtgexJyOF11SwK8xlisSeY8c0hCor6RotMoXPn99DHHbm5dw7Xu5N0ATDYhiIAp2ocXQdMI1edxddlJA`
 
 	var (
-		c TokenClaims
+		c AuthClaims
 	)
 	_, err := jwt.ParseWithClaims(x, &c, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
@@ -96,14 +96,14 @@ func TestParseIssuedAtAsString(t *testing.T) {
 	}
 }
 
-func TestParseIssuedAtAsTime(t *testing.T) {
+func TestAuthClaimParseIssuedAtAsTime(t *testing.T) {
 	cryptotest.SetGlobalRandom(t, 0)
 	privateKey, _ := rsa.GenerateKey(nil, 1024)
 
 	x := `eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJwYXJ0bmVySWQiOiJwaWQiLCJ1c2VySWQiOiJ1aWQiLCJkZXZpY2VJZCI6ImRpZCIsInJvbGUiOiJyb2xlIiwiZXhwIjoxNzg1OTY2MDkzLCJyYmYiOjE3ODU5NjYzMzMsImNyZWF0ZWQiOjE3ODU5NjYwMzN9.YSadg7XRqJKWs5aLQLurhEge8Nl8H8QPXQSCsjVz36v3Es9O1-g0wGFfVJxzBnkyPlDF-s9wPTlBsPuUlLfp5ZPriX7j36cXj9akzrAFcABkJ3H8YpQF9yoWjVElmDG2q_AfLpyiuuHRdWC_LdsTDOPNVpbOnaR4HoUGUcsEU4w`
 
 	var (
-		c TokenClaims
+		c AuthClaims
 	)
 	_, err := jwt.ParseWithClaims(x, &c, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {

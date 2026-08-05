@@ -27,8 +27,11 @@ import (
 //
 // Note that the final error rule means that passing an invalid jwt to an open
 // endpoint will result in an authentication error.
-func AuthCheckCtx(ctx echo.Context, publicKey *rsa.PublicKey, partnerID string, userID string) (string, *TokenClaims, error) {
+func AuthCheckCtx(ctx echo.Context, publicKey *rsa.PublicKey, partnerID string, userID string) (string, *AuthClaims, error) {
 	authScopes := ctx.Get("bearerAuth.Scopes")
+
+	// note: add other auth mechanisms here, e.g. api-key
+	// using "Authorization: APIKEY lio-xx"
 
 	token, err := authTokenFromHeader(ctx)
 	if err != nil { // no auth header
@@ -40,7 +43,7 @@ func AuthCheckCtx(ctx echo.Context, publicKey *rsa.PublicKey, partnerID string, 
 			Str("userID", userID)
 	}
 
-	scopes := []string{}
+	var scopes []string
 	if authScopes != nil {
 		scopes = authScopes.([]string)
 	}
@@ -77,7 +80,7 @@ func GetPartnerAndUserFromToken(tokenStr string, publicKey *rsa.PublicKey) (part
 	return
 }
 
-func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, userID string, scopes []string) (*TokenClaims, error) {
+func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, userID string, scopes []string) (*AuthClaims, error) {
 	_, claims, err := ParseToken(publicKey, tokenStr)
 	if err != nil {
 		return nil, Errorf(err, "invalid token").Str("partnerID", partnerID).Str("userID", userID)
@@ -144,18 +147,18 @@ func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, user
 	return claims, nil
 }
 
-func ParseToken(verifyKey *rsa.PublicKey, tokenString string) (*jwt.Token, *TokenClaims, error) {
-	var tc = new(TokenClaims)
-	token, err := jwt.ParseWithClaims(tokenString, tc, func(token *jwt.Token) (interface{}, error) {
+func ParseToken(verifyKey *rsa.PublicKey, tokenString string) (*jwt.Token, *AuthClaims, error) {
+	var c = new(AuthClaims)
+	token, err := jwt.ParseWithClaims(tokenString, c, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return verifyKey, nil
 	})
 	if err != nil {
-		return nil, tc, NewErrorE(http.StatusUnauthorized, err).Msg("invalid token: failed parsing")
+		return nil, c, NewErrorE(http.StatusUnauthorized, err).Msg("invalid token: failed parsing")
 	}
-	return token, tc, nil
+	return token, c, nil
 }
 
 func authTokenFromHeader(c echo.Context) (string, error) {
@@ -177,8 +180,8 @@ func migrateRole(role string) string {
 	return role
 }
 
-// TokenClaims describes both user and service tokens.
-type TokenClaims struct {
+// AuthClaims describes both user and service tokens.
+type AuthClaims struct {
 	PartnerID     string    `json:"partnerId"`          // user and service
 	UserID        string    `json:"userId"`             // user and service
 	DeviceID      string    `json:"deviceId,omitzero"`  // user only
@@ -189,12 +192,12 @@ type TokenClaims struct {
 	Roles         []string  `json:"apiRoles,omitempty"` // service only
 }
 
-func (u TokenClaims) IsServiceToken() bool {
+func (u AuthClaims) IsServiceToken() bool {
 	return u.Role == "api-user" || len(u.Roles) > 0
 }
 
 // MarshalJSON implements the json.Marshaler interface.
-func (u TokenClaims) MarshalJSON() ([]byte, error) {
+func (u AuthClaims) MarshalJSON() ([]byte, error) {
 	raw := struct {
 		PartnerID     string           `json:"partnerId"`
 		UserID        string           `json:"userId"`
@@ -223,7 +226,7 @@ func (u TokenClaims) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
-func (u *TokenClaims) UnmarshalJSON(data []byte) error {
+func (u *AuthClaims) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		PartnerID     string           `json:"partnerId"`
 		UserID        string           `json:"userId"`
@@ -238,7 +241,7 @@ func (u *TokenClaims) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	*u = TokenClaims{
+	*u = AuthClaims{
 		PartnerID: raw.PartnerID,
 		UserID:    raw.UserID,
 		DeviceID:  raw.DeviceID,
@@ -276,31 +279,31 @@ func (u *TokenClaims) UnmarshalJSON(data []byte) error {
 }
 
 // GetExpirationTime implements the Claims interface.
-func (u TokenClaims) GetExpirationTime() (*jwt.NumericDate, error) {
+func (u AuthClaims) GetExpirationTime() (*jwt.NumericDate, error) {
 	return &jwt.NumericDate{u.ExpiresAt}, nil
 }
 
 // GetNotBefore implements the Claims interface.
-func (u TokenClaims) GetNotBefore() (*jwt.NumericDate, error) {
+func (u AuthClaims) GetNotBefore() (*jwt.NumericDate, error) {
 	return nil, nil
 }
 
 // GetIssuedAt implements the Claims interface.
-func (u TokenClaims) GetIssuedAt() (*jwt.NumericDate, error) {
+func (u AuthClaims) GetIssuedAt() (*jwt.NumericDate, error) {
 	return &jwt.NumericDate{u.IssuedAt}, nil
 }
 
 // GetAudience implements the Claims interface.
-func (u TokenClaims) GetAudience() (jwt.ClaimStrings, error) {
+func (u AuthClaims) GetAudience() (jwt.ClaimStrings, error) {
 	return nil, nil
 }
 
 // GetIssuer implements the Claims interface.
-func (u TokenClaims) GetIssuer() (string, error) {
+func (u AuthClaims) GetIssuer() (string, error) {
 	return "", nil
 }
 
 // GetSubject implements the Claims interface.
-func (u TokenClaims) GetSubject() (string, error) {
+func (u AuthClaims) GetSubject() (string, error) {
 	return "", nil
 }
