@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"strconv"
@@ -16,14 +17,17 @@ import (
 )
 
 // AuthCheckCtx performs endpoint authentication, returning an error if the endpoint is:
-//   - protected, but req has no token (no auth header)
-//   - protected, and req has token, but not valid (token not valid)
-//   - protected, and req has token, but no matching scopes (missing scope)
+//   - scope-sec, but req has no token (no auth header)
+//   - scope-sec, and req has token, but not valid (token not valid)
+//   - scope-sec, and req has token, but no matching scopes (missing scope)
+//   - token-sec, but req has no token (no auth header)
+//   - token-sec, and req has token, but not valid (token not valid)
 //   - open, and req has token, but not valid (token not valid)
 //
-// `protected` is defined as having any scope other than "".
-//
-// `open` is defined as having no scopes or a single scope equal to "".
+// Definitions for endpoint security:
+//   - `scope-sec`: has security scopes and the first is any other than "".
+//   - `token-sec`: has a single security scope equal to "".
+//   - `open`: has no security configuration.
 //
 // Note that the final error rule means that passing an invalid jwt to an open
 // endpoint will result in an authentication error.
@@ -52,47 +56,24 @@ func AuthCheckCtx(ctx echo.Context, publicKey *rsa.PublicKey, partnerID string, 
 	return token, claims, err
 }
 
-func GetRole(strToken string, publicKey *rsa.PublicKey) (string, error) {
-	_, claims, err := ParseToken(publicKey, strToken)
-	if err != nil {
-		return "", Errorf(err)
-	}
-	return claims.Role, nil
-}
-
-func GetPartnerAndUserFromToken(tokenStr string, publicKey *rsa.PublicKey) (partnerId string, userId string, role string, err error) {
-	_, claims, err := ParseToken(publicKey, tokenStr)
-	if err != nil {
-		err = Errorf(err, "invalid token")
-		return
-	}
-
-	if partnerId = claims.PartnerID; partnerId == "" {
-		return "", "", "", NewError(http.StatusUnauthorized).Msg("empty claim: partnerId")
-	}
-	if userId = claims.UserID; userId == "" {
-		return "", "", "", NewError(http.StatusUnauthorized).Msg("empty claim: userId")
-	}
-	if role = claims.Role; role == "" {
-		return "", "", "", NewError(http.StatusUnauthorized).Msg("empty claim: role")
-	}
-
-	return
-}
-
 func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, userID string, scopes []string) (*AuthClaims, error) {
 	_, claims, err := ParseToken(publicKey, tokenStr)
 	if err != nil {
 		return nil, Errorf(err, "invalid token").Str("partnerID", partnerID).Str("userID", userID)
 	}
 
-	var open = len(scopes) == 0 || scopes[0] == ""
+	var (
+		open         = len(scopes) == 0
+		tokenSecured = len(scopes) == 1 && scopes[0] == ""
+		scopeSecured = len(scopes) > 0 && scopes[0] != ""
+	)
 
 	if claims.IsServiceToken() {
-		if open {
-			return claims, nil // open endpoint
+		if open || tokenSecured {
+			return claims, nil // tokenSecured endpoint
 		}
 
+		// scopeSecured endpoint
 		apiRoles := make(map[string]struct{})
 		for _, role := range claims.Roles {
 			apiRoles[role] = struct{}{}
@@ -103,7 +84,10 @@ func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, user
 				return claims, nil
 			}
 		}
-		return nil, NewError(http.StatusUnauthorized).Msg("apiUser has no claim for any of the defined scopes")
+		return nil, NewError(http.StatusUnauthorized).
+			Str("endpointScopes", strings.Join(scopes, ", ")).
+			Str("tokenScopes", strings.Join(claims.Roles, ",")).
+			Msg("apiUser has no claim for any of the required scopes")
 	}
 
 	// Check that the PartnerID in the URL-path matches the one in the JwtToken
@@ -123,25 +107,20 @@ func authCheck(publicKey *rsa.PublicKey, tokenStr string, partnerID string, user
 	}
 
 	// Check that user has one of the roles defined in security scope (if it's not empty)
-	if !open {
+	if scopeSecured {
 		if claims.Role == "" {
 			return nil, NewError(http.StatusUnauthorized).
 				Str("partnerID", partnerID).
 				Str("userID", userID).
 				Msg("user has no role defined in token")
 		}
-		roleMatch := false
-		for _, scope := range scopes {
-			if scope == claims.Role {
-				roleMatch = true
-			}
-		}
-		if !roleMatch {
+		if ok := slices.Contains(scopes, claims.Role); !ok {
 			return nil, NewError(http.StatusUnauthorized).
 				Str("partnerID", partnerID).
 				Str("userID", userID).
+				Str("role", claims.Role).
 				Str("scopes", strings.Join(scopes, ",")).
-				Msg("user has no claim for any of the defined scopes")
+				Msg("user role does not match any of the required scopes")
 		}
 	}
 	return claims, nil
@@ -156,7 +135,7 @@ func ParseToken(verifyKey *rsa.PublicKey, tokenString string) (*jwt.Token, *Auth
 		return verifyKey, nil
 	})
 	if err != nil {
-		return nil, c, NewErrorE(http.StatusUnauthorized, err).Msg("invalid token: failed parsing")
+		return token, c, NewErrorE(http.StatusUnauthorized, err).Msg("invalid token: failed parsing")
 	}
 	return token, c, nil
 }
@@ -257,7 +236,7 @@ func (u *AuthClaims) UnmarshalJSON(data []byte) error {
 
 	if len(raw.IssuedAt) > 0 {
 		if raw.IssuedAt[0] == '"' {
-			// string-encoded unix
+			// string-encoded unix (backwards-compatible)
 			q := "\""
 			x := bytes.TrimRight(bytes.TrimLeft(raw.IssuedAt, q), q)
 			sec64, err := strconv.ParseInt(string(x), 10, 64)
