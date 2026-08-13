@@ -22,7 +22,8 @@ const (
 	actionKey  = auditLogKeyType("action")
 	authKey    = auditLogKeyType("authToken")
 
-	userIDKey = auditLogKeyType("userID")
+	userIDKey    = auditLogKeyType("userID")
+	partnerIDKey = auditLogKeyType("partnerID")
 )
 
 func FromEcho(e echo.Context) context.Context {
@@ -65,6 +66,9 @@ func WithAction(ctx context.Context, action string) context.Context {
 func WithUserID(ctx context.Context, userid string) context.Context {
 	return context.WithValue(ctx, userIDKey, userid)
 }
+func WithPartnerID(ctx context.Context, partnerid string) context.Context {
+	return context.WithValue(ctx, partnerIDKey, partnerid)
+}
 
 // AuthTokenFrom extracts the embedded JWT. Returns zero string if not found.
 func AuthTokenFrom(ctx context.Context) string {
@@ -76,6 +80,14 @@ func AuthTokenFrom(ctx context.Context) string {
 
 // UserIDFrom extracts an embedded userID from WithUserID. Returns zero string if not found.
 func UserIDFrom(ctx context.Context) string {
+	if val := ctx.Value(userIDKey); val != nil {
+		return val.(string)
+	}
+	return ""
+}
+
+// PartnerIDFrom extracts an embedded PartnerID from WithPartnerID. Returns zero string if not found.
+func PartnerIDFrom(ctx context.Context) string {
 	if val := ctx.Value(userIDKey); val != nil {
 		return val.(string)
 	}
