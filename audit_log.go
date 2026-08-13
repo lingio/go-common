@@ -88,7 +88,7 @@ func UserIDFrom(ctx context.Context) string {
 
 // PartnerIDFrom extracts an embedded PartnerID from WithPartnerID. Returns zero string if not found.
 func PartnerIDFrom(ctx context.Context) string {
-	if val := ctx.Value(userIDKey); val != nil {
+	if val := ctx.Value(partnerIDKey); val != nil {
 		return val.(string)
 	}
 	return ""
