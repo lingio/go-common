@@ -72,9 +72,13 @@ func copyModelFile(filename string, targetDir string, packageName string) {
 		}
 	}
 
-	err = os.WriteFile(fmt.Sprintf("%s/model.gen.go", targetDir), data, 0644)
+	modelPath := fmt.Sprintf("%s/model.gen.go", targetDir)
+	err = os.WriteFile(modelPath, data, 0644)
 	if err != nil {
 		zl.Fatal().Str("error", err.Error()).Msg("failed to write the models.gen.go file")
+	}
+	if err := gen.Postprocess(modelPath); err != nil {
+		zl.Fatal().Str("error", err.Error()).Msg("failed to format the models.gen.go file")
 	}
 }
 
