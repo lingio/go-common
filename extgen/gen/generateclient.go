@@ -88,7 +88,9 @@ func GenerateFromSpec(tfs fs.FS, es ExtSpec, specFilename string, outdir string)
 	if err != nil {
 		zl.Fatal().Str("err", err.Error()).Msg("error writing file")
 	}
-	postprocess(genfile)
+	if err := Postprocess(genfile); err != nil {
+		zl.Fatal().Str("err", err.Error()).Msg("error formatting file")
+	}
 }
 
 func GenerateAll(tfs fs.FS, funcs []Func, outdir string, packageName string, clientFilename string) {
@@ -149,7 +151,8 @@ func generate(fs fs.FS, tmplFilename string, params TmplParams) []byte {
 	return b.Bytes()
 }
 
-func postprocess(filepath string) error {
+// Postprocess runs go fmt and goimports (when available) on a generated file.
+func Postprocess(filepath string) error {
 	var gofmt bool
 	var imports bool
 	// If go is installed the standard way from https://golang.org/doc/install
