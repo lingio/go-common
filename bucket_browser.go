@@ -180,10 +180,8 @@ func (bb *BucketBrowser) getStoreObject(c echo.Context) error {
 func (bb *BucketBrowser) allowOnlyAdmins(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(ctx echo.Context) error {
 		ctx.Set("bearerAuth.Scopes", []string{"admin", "cs"})
-		if _, err := AuthCheckCtx(ctx, bb.jwtAuthKey, "", ""); err != nil {
-			// Note: technically wrong place to handle error, but it'll have to do for now
-			RespondError(ctx, err)
-			return nil
+		if _, _, err := AuthCheckCtx(ctx, bb.jwtAuthKey, "", ""); err != nil {
+			return err
 		}
 		return next(ctx)
 	}
