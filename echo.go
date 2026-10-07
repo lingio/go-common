@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -85,6 +86,8 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 
 	// Init Prometheus
 	p := prometheus.NewPrometheus("echo", nil)
+	p.RequestCounterURLLabelMappingFunc = metricsURLLabel
+	p.RequestCounterHostLabelMappingFunc = metricsHostLabel
 	isMetricRequest := func(ctx echo.Context) bool {
 		return ctx.Path() == p.MetricsPath
 	}
@@ -256,4 +259,29 @@ func RespondFile(ctx echo.Context, statusCode int, file []byte, fileName string,
 func RespondError(ctx echo.Context, le *Error) error {
 	// returning le directly will busy loop somewhere in echo
 	return Errorf(le)
+}
+
+// unmatchedRouteLabel is the url label for requests that match no route. The
+// echo-contrib default uses the raw request path there, so every path a
+// scanner tries becomes a new series.
+const unmatchedRouteLabel = "unmatched"
+
+func metricsURLLabel(c echo.Context) string {
+	if p := c.Path(); p != "" {
+		return p // the route pattern, e.g. /users/:id
+	}
+	return unmatchedRouteLabel
+}
+
+// metricsHostLabel keeps the Host header only for our own names and folds
+// everything else (IPs, scanner-supplied hosts) into "other".
+func metricsHostLabel(c echo.Context) string {
+	host := strings.ToLower(c.Request().Host)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if strings.HasSuffix(host, ".lingio.com") || strings.HasSuffix(host, ".svc.cluster.local") {
+		return host
+	}
+	return "other"
 }
