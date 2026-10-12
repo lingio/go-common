@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"google.golang.org/grpc/codes"
 
@@ -341,11 +342,8 @@ func SpannerReadTypedUsingIndex[T any](ctx context.Context, cli *spanner.Client,
 //
 // Read more about key sets: https://pkg.go.dev/cloud.google.com/go/spanner@v1.44.0#KeySet
 func SpannerReadTypedWithOptions[T any](ctx context.Context, cli *spanner.Client, table string, keySet spanner.KeySet, opts *spanner.ReadOptions) ([]T, error) {
-	txn := cli.ReadOnlyTransaction()
-	defer txn.Close()
-
 	var t T
-	it := txn.ReadWithOptions(ctx, table, keySet, SpannerStructFieldNames(t), opts)
+	it := cli.Single().ReadWithOptions(ctx, table, keySet, SpannerStructFieldNames(t), opts)
 	return SpannerReadProjected(it, ProjectIdentity[T])
 }
 
@@ -382,25 +380,19 @@ func SpannerReadTypedAndDecodeUsingIndex[I any, T any](ctx context.Context, cli 
 //
 // Read more about key sets: https://pkg.go.dev/cloud.google.com/go/spanner@v1.44.0#KeySet
 func SpannerReadTypedAndDecodeWithOptions[I any, T any](ctx context.Context, cli *spanner.Client, table string, keySet spanner.KeySet, opts *spanner.ReadOptions) ([]T, error) {
-	txn := cli.ReadOnlyTransaction()
-	defer txn.Close()
-
 	var i I // intermediate
-	it := txn.ReadWithOptions(ctx, table, keySet, SpannerStructFieldNames(i), opts)
+	it := cli.Single().ReadWithOptions(ctx, table, keySet, SpannerStructFieldNames(i), opts)
 	return SpannerReadProjected(it, ProjectDecoded[I, T])
 }
 
 // SpannerQueryTyped returns all rows from query, deserialized to struct T.
 func SpannerQueryTyped[T any](ctx context.Context, cli *spanner.Client, query string, params map[string]interface{}) ([]T, error) {
-	txn := cli.ReadOnlyTransaction()
-	defer txn.Close()
-
 	stmt := spanner.Statement{
 		SQL:    query,
 		Params: params,
 	}
 
-	it := txn.Query(ctx, stmt)
+	it := cli.Single().Query(ctx, stmt)
 	return SpannerReadProjected(it, ProjectIdentity[T])
 }
 
@@ -408,15 +400,12 @@ func SpannerQueryTyped[T any](ctx context.Context, cli *spanner.Client, query st
 // struct I and then decoded into struct T using
 // [DecodeSpannerStructField].
 func SpannerQueryTypedAndDecode[I any, T any](ctx context.Context, cli *spanner.Client, query string, params map[string]interface{}) ([]T, error) {
-	txn := cli.ReadOnlyTransaction()
-	defer txn.Close()
-
 	stmt := spanner.Statement{
 		SQL:    query,
 		Params: params,
 	}
 
-	it := txn.Query(ctx, stmt)
+	it := cli.Single().Query(ctx, stmt)
 	return SpannerReadProjected(it, ProjectDecoded[I, T])
 }
 
