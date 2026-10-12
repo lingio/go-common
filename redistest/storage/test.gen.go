@@ -6,10 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lingio/go-common/redistest/models"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/go-redis/redis/v8"
 	uuid "github.com/google/uuid"
@@ -73,9 +74,15 @@ type TestCacheIngest struct {
 }
 
 // NewTestStore configures a new store and initializes the provided cache if required.
-func NewTestStore(ctx context.Context, mc *minio.Client, cache TestCache, serviceKey string) (*TestStore, error) {
+func NewTestStore(ctx context.Context, mc *minio.Client, cache TestCache, serviceKey string, opts ...Option) (*TestStore, error) {
+	cfg := ObjectStoreConfig{
+		Bucket: "redistest--test",
+	}
+	for _, opt := range opts {
+		opt.Apply(&cfg)
+	}
 	// DefaultOjbectStoreConfig || deserialize
-	objectStore, err := common.NewObjectStore(mc, "redistest--test", TestStoreConfig)
+	objectStore, err := common.NewObjectStore(mc, cfg.Bucket, TestStoreConfig)
 	if err != nil {
 		return nil, fmt.Errorf("creating object store: %w", err)
 	}
@@ -85,8 +92,34 @@ func NewTestStore(ctx context.Context, mc *minio.Client, cache TestCache, servic
 		return nil, fmt.Errorf("creating encrypted store: %w", err)
 	}
 
+	return newTestStore(ctx, encryptedStore, cache)
+}
+
+// NewInsecureTestStore configures a new store and initializes the provided cache if required.
+func NewInsecureTestStore(ctx context.Context, mc *minio.Client, cache TestCache, serviceKey string, opts ...Option) (*TestStore, error) {
+	cfg := ObjectStoreConfig{
+		Bucket: "redistest--test",
+	}
+	for _, opt := range opts {
+		opt.Apply(&cfg)
+	}
+	// DefaultOjbectStoreConfig || deserialize
+	objectStore, err := common.NewObjectStore(mc, cfg.Bucket, TestStoreConfig)
+	if err != nil {
+		return nil, fmt.Errorf("creating object store: %w", err)
+	}
+
+	encryptedStore, err := common.NewInsecureEncryptedStore(objectStore, serviceKey)
+	if err != nil {
+		return nil, fmt.Errorf("creating encrypted store: %w", err)
+	}
+
+	return newTestStore(ctx, encryptedStore, cache)
+}
+
+func newTestStore(ctx context.Context, backend common.LingioStore, cache TestCache) (*TestStore, error) {
 	db := &TestStore{
-		backend: encryptedStore,
+		backend: backend,
 		cache:   cache,
 		ready:   0,
 	}
@@ -99,7 +132,7 @@ func NewTestStore(ctx context.Context, mc *minio.Client, cache TestCache, servic
 	common.RegisterRedisOnConnectHook(func(ctx context.Context) {
 		if err := cache.Init(ctx, db.backend); err != nil {
 			zl.Error().Err(err).
-				Str("component", serviceKey).
+				Str("component", "TestStore").
 				Msg("cache re-initialization failed")
 		}
 	})
@@ -135,7 +168,7 @@ func (s *TestStore) Create(ctx context.Context, obj models.Test) (*models.Test, 
 				Str("ID", obj.ID).Msg("an object with this ID is already stored in the database")
 		}
 	} else {
-		obj.ID = uuid.NewV4().String()
+		obj.ID = uuid.NewString()
 	}
 	if err := s.put(ctx, obj); err != nil {
 		return nil, err
@@ -187,7 +220,7 @@ func (s *TestStore) put(ctx context.Context, obj models.Test) error {
 
 	var expiration time.Duration
 	if !info.Expiration.IsZero() {
-		expiration = info.Expiration.Sub(time.Now())
+		expiration = time.Until(info.Expiration)
 	}
 	return s.cache.Put(ctx, obj, expiration, info.ETag)
 }
@@ -236,11 +269,11 @@ func NewTestRedisCache(client *redis.Client) *TestRedisCache {
 // the bucket --> cache initialization takes, we need to periodically extend
 // the lock while we fill the cache with data from the object store backend.
 func (c *TestRedisCache) Init(ctx context.Context, backend common.LingioStore) (resulterr error) {
-	var objectsLoaded int
+	var objectsLoaded uint32
 	defer func() {
 		if resulterr == nil {
 			c.WarmedUp.SetTrue()
-			zl.Info().Str("component", "TestStore").Int("objectsLoaded", objectsLoaded).Msg("cache initialized.")
+			zl.Info().Str("component", "TestStore").Uint32("objectsLoaded", objectsLoaded).Msg("cache initialized.")
 		}
 	}()
 
@@ -254,7 +287,7 @@ func (c *TestRedisCache) Init(ctx context.Context, backend common.LingioStore) (
 		}
 
 		// All concurrent processes will exit before or when this context completes.
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctx)
 
 		// Try to acquire the init lock. It will be valid for a few seconds and we might need to extend it.
 		// If something stops the world (GC pause / ??) we might lose the lock (and not know about it).
@@ -274,7 +307,7 @@ func (c *TestRedisCache) Init(ctx context.Context, backend common.LingioStore) (
 			}
 		}(ctx)
 
-		// Now that we have the lock, ensure that our view of the cache init status is up-to-date.
+		// Now that we have the lock, ensure that our view of the cache init status is still up-to-date.
 		if ok, err := c.Initialized(); err != nil {
 			return fmt.Errorf("checking cache: %w", err)
 		} else if ok {
@@ -284,131 +317,137 @@ func (c *TestRedisCache) Init(ctx context.Context, backend common.LingioStore) (
 
 		zl.Info().Str("component", "TestStore").Msg("cache not initialized, lock acquired, now fetching all data...")
 
-		const NUM_WORKERS = 15
+		const NUM_WORKERS = 50
 
-		listing := backend.ListObjects(ctx)
-		// workerout is closed by worker pool process
-		workerout := make(chan TestCacheIngest, NUM_WORKERS*2)
-		// initobj is closed by main control loop
-		cacheinit := make(chan TestCacheIngest, NUM_WORKERS*2)
+		taskGrp, wctx := errgroup.WithContext(ctx)
+		cacheinit := make(chan TestCacheIngest, NUM_WORKERS*400)
 
-		// Launch worker process.
-		var wg sync.WaitGroup
-		wg.Add(NUM_WORKERS)
-		go func() {
-			defer close(workerout)
-
-			worker := func() {
-				defer wg.Done()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case req, more := <-listing:
-						if !more {
-							return
-						}
-
-						data, info, err := backend.GetObject(ctx, req.Key)
-						if err != nil {
-							workerout <- TestCacheIngest{
-								ObjectInfo: common.ObjectInfo{},
-								Entity:     models.Test{},
-								Err:        fmt.Errorf("backend: %w", err),
+		// Load objects from backend
+		taskGrp.Go(func() error {
+			listing := backend.ListObjects(wctx)
+			subgrp, wctx := errgroup.WithContext(wctx)
+			defer close(cacheinit)
+			for i := 0; i < NUM_WORKERS; i++ {
+				subgrp.Go(func() error {
+					for {
+						select {
+						case <-wctx.Done():
+							return nil
+						case req, more := <-listing:
+							if !more {
+								return nil
 							}
-							return
-						}
 
-						var entity models.Test
-						if err := json.Unmarshal(data, &entity); err != nil {
-							workerout <- TestCacheIngest{
-								ObjectInfo: common.ObjectInfo{},
-								Entity:     models.Test{},
-								Err:        fmt.Errorf("unmarshalling: %w", err),
+							data, info, err := backend.GetObject(wctx, req.Key)
+							if err != nil {
+								return fmt.Errorf("backend: %w", err)
 							}
-							return
-						}
 
-						if info.Key != TestFilename(entity.ID) {
-							zl.Warn().Str("key", info.Key).Msg("skipping object with mismatched filename")
-							continue
-						}
+							var entity models.Test
+							if err := json.Unmarshal(data, &entity); err != nil {
+								return fmt.Errorf("unmarshalling: %w", err)
+							}
 
-						workerout <- TestCacheIngest{
-							ObjectInfo: info,
-							Entity:     entity,
-							Err:        nil,
+							if info.Key != TestFilename(entity.ID) {
+								zl.Warn().Str("key", info.Key).Msg("skipping object with mismatched filename")
+								continue
+							}
+
+							cacheinit <- TestCacheIngest{
+								ObjectInfo: info,
+								Entity:     entity,
+							}
 						}
 					}
-				}
+				})
 			}
+			return subgrp.Wait()
+		})
 
+		// Write objects into cache
+		taskGrp.Go(func() error {
+			subgrp, wctx := errgroup.WithContext(wctx)
 			for i := 0; i < NUM_WORKERS; i++ {
-				go worker()
-			}
-			wg.Wait()
-		}()
+				subgrp.Go(func() error {
+					for {
+						select {
+						case <-wctx.Done():
+							return nil
+						case obj, more := <-cacheinit:
+							if !more {
+								return nil
+							}
+							var expiration time.Duration
+							if !obj.Expiration.IsZero() {
+								expiration = time.Until(obj.Expiration)
+							}
+							if err := c.Put(wctx, obj.Entity, expiration, obj.ETag); err != nil {
+								return fmt.Errorf("cache init: %w", err)
+							}
 
-		// Main control loop: will periodically refresh the cache lock, check
-		// for errors in bucket listing and put objects into the cache.
-		ticker := time.NewTicker(3 * time.Second)
-		objectsLoaded = 0
-	main_control_loop:
-		for {
-			select {
-			case <-ticker.C:
-				if err := c.AcquireInitLock(ctx); err != nil {
-					resulterr = err
-					break main_control_loop
-				}
-			case obj, more := <-workerout:
-				if !more {
-					break main_control_loop
-				}
-				if obj.Err != nil {
-					resulterr = obj.Err
-					break main_control_loop
-				}
-				var expiration time.Duration
-				if !obj.Expiration.IsZero() {
-					expiration = obj.Expiration.Sub(time.Now())
-				}
-				if err := c.Put(ctx, obj.Entity, expiration, obj.ETag); err != nil {
-					resulterr = err
-					break main_control_loop
-				}
-				objectsLoaded++
-				if objectsLoaded%10_000 == 0 {
-					zl.Info().Str("component", "TestStore").
-						Int("objectsLoaded", objectsLoaded).
-						Msg("initializing cache")
+							loaded := atomic.AddUint32(&objectsLoaded, 1)
+							if loaded%10_000 == 0 {
+								zl.Info().Str("component", "TestStore").
+									Uint32("objectsLoaded", loaded).
+									Msg("initializing cache")
 
+							}
+						}
+					}
+				})
+			}
+			return subgrp.Wait()
+		})
+
+		masterGrp, mctx := errgroup.WithContext(ctx)
+		masterGrp.Go(func() error {
+			ticker := time.NewTicker(3 * time.Second)
+			defer ticker.Stop()
+
+			taskGrpDone := make(chan error)
+			defer close(taskGrpDone)
+			go func() {
+				taskGrpDone <- taskGrp.Wait()
+			}()
+
+			for {
+				select {
+				case <-ticker.C:
+					if err := c.AcquireInitLock(mctx); err != nil {
+						return fmt.Errorf("cache lock refresh: %w", err)
+					}
+				case err := <-taskGrpDone:
+					return err
 				}
 			}
+		})
+
+		if err := masterGrp.Wait(); err != nil {
+			return err
 		}
-		ticker.Stop()
-		close(cacheinit)
 
 		// Only mark cache as initialized if we didn't encounter any error.
-		if resulterr == nil {
-			if err := c.Client.Set(ctx, c.InitKey(), []byte("1"), 0).Err(); err != nil {
-				zl.Warn().Str("component", "TestStore").Msg("could not mark cache as initialized")
-				resulterr = err
-			}
+		if err := c.Client.Set(ctx, c.InitKey(), []byte(time.Now().UTC().Format(time.RFC3339)), 0).Err(); err != nil {
+			zl.Warn().Str("component", "TestStore").Msg("could not mark cache as initialized")
+			return err
 		}
 
-		// returning will cancel the ctx, which will also cancel listing and workers
-		return resulterr
 	}
 
 	//unreachable!
 }
 
 func (c TestRedisCache) Put(ctx context.Context, obj models.Test, expiration time.Duration, etag string) error {
+	pipe := c.Client.TxPipeline()
 
 	co := testCacheObject{
 		ETag:   etag,
 		Entity: obj,
+	}
+
+	data, err := json.Marshal(co)
+	if err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
 	// Fetch the previous version of this object (if there is any)
@@ -418,26 +457,18 @@ func (c TestRedisCache) Put(ctx context.Context, obj models.Test, expiration tim
 	}
 
 	// Primary index: ID
-	if err = c.put(ctx, c.Key(TestCacheKeyID, obj.ID), co, expiration); err != nil {
-		return err
-	}
+	pipe.Set(ctx, c.Key(TestCacheKeyID, obj.ID), data, expiration)
 
 	var idx string
 	// Set index: Topic
 	idx = CompoundIndex(obj.Topic)
-	c.Client.SAdd(ctx, c.Key(TestCacheKeyTopic, idx), obj.ID)
-	err = c.Client.Incr(ctx, c.ETagKey(TestCacheKeyTopic, idx)).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.SAdd(ctx, c.Key(TestCacheKeyTopic, idx), obj.ID)
+	pipe.Incr(ctx, c.ETagKey(TestCacheKeyTopic, idx))
 
 	// Set index: TopicAndSubtopic
 	idx = CompoundIndex(obj.Topic, obj.Subtopic)
-	c.Client.SAdd(ctx, c.Key(TestCacheKeyTopicAndSubtopic, idx), obj.ID)
-	err = c.Client.Incr(ctx, c.ETagKey(TestCacheKeyTopicAndSubtopic, idx)).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.SAdd(ctx, c.Key(TestCacheKeyTopicAndSubtopic, idx), obj.ID)
+	pipe.Incr(ctx, c.ETagKey(TestCacheKeyTopicAndSubtopic, idx))
 
 	// Delete old secondary indexes if they changed
 	if orig != nil {
@@ -446,23 +477,22 @@ func (c TestRedisCache) Put(ctx context.Context, obj models.Test, expiration tim
 		if obj.Topic != orig.Topic {
 			idx = CompoundIndex(orig.Topic)
 			c.Client.SRem(ctx, c.Key(TestCacheKeyTopic, idx), orig.ID)
-			err := c.Client.Incr(ctx, c.ETagKey(TestCacheKeyTopic, idx)).Err()
-			if err != nil {
-				return common.NewErrorE(http.StatusInternalServerError, err)
-			}
+			pipe.Incr(ctx, c.ETagKey(TestCacheKeyTopic, idx))
 		}
 
 		// TopicAndSubtopic depends on (.Topic, .Subtopic)
 		if obj.Topic != orig.Topic || obj.Subtopic != orig.Subtopic {
 			idx = CompoundIndex(orig.Topic, orig.Subtopic)
 			c.Client.SRem(ctx, c.Key(TestCacheKeyTopicAndSubtopic, idx), orig.ID)
-			err := c.Client.Incr(ctx, c.ETagKey(TestCacheKeyTopicAndSubtopic, idx)).Err()
-			if err != nil {
-				return common.NewErrorE(http.StatusInternalServerError, err)
-			}
+			pipe.Incr(ctx, c.ETagKey(TestCacheKeyTopicAndSubtopic, idx))
 		}
 
 	}
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return common.NewErrorE(http.StatusInternalServerError, err)
+	}
+
 	return nil
 }
 
@@ -498,6 +528,37 @@ func (c TestRedisCache) Get(ctx context.Context, id string) (*models.Test, strin
 	return c.get(ctx, TestCacheKeyID, id)
 }
 
+// MGet fetches multiple Test by their ID at the same time.
+func (c TestRedisCache) MGet(ids ...string) ([]models.Test, string, error) {
+	objs := make([]models.Test, 0, len(ids))
+	if len(ids) == 0 {
+		return objs, "", nil
+	}
+
+	for i, key := range ids {
+		ids[i] = c.Key(TestCacheKeyID, key)
+	}
+
+	res, err := c.Client.MGet(context.TODO(), ids...).Result()
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+	}
+	for _, data := range res {
+		// should be rare case; the id we fetched does not exist
+		if data == nil {
+			continue
+		}
+
+		var co testCacheObject
+		if err := json.Unmarshal([]byte(data.(string)), &co); err != nil {
+			return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
+		}
+		objs = append(objs, co.Entity)
+	}
+
+	return objs, "", nil
+}
+
 // GetAllByTopic fetches all cached Tests by their Topic
 func (c *TestRedisCache) GetAllByTopic(ctx context.Context, topic string) ([]models.Test, string, error) {
 	idx := CompoundIndex(topic)
@@ -506,13 +567,9 @@ func (c *TestRedisCache) GetAllByTopic(ctx context.Context, topic string) ([]mod
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
-	objs := make([]models.Test, 0, 5)
-	for _, key := range keys {
-		obj, _, err := c.Get(ctx, key)
-		if err != nil {
-			return nil, "", err
-		}
-		objs = append(objs, *obj)
+	objs, _, err := c.MGet(keys...)
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
 	etag, err := c.Client.Get(ctx, c.ETagKey(TestCacheKeyTopic, idx)).Result()
@@ -532,13 +589,9 @@ func (c *TestRedisCache) GetAllByTopicAndSubtopic(ctx context.Context, topic, su
 		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
-	objs := make([]models.Test, 0, 5)
-	for _, key := range keys {
-		obj, _, err := c.Get(ctx, key)
-		if err != nil {
-			return nil, "", err
-		}
-		objs = append(objs, *obj)
+	objs, _, err := c.MGet(keys...)
+	if err != nil {
+		return nil, "", common.NewErrorE(http.StatusInternalServerError, err)
 	}
 
 	etag, err := c.Client.Get(ctx, c.ETagKey(TestCacheKeyTopicAndSubtopic, idx)).Result()
@@ -560,25 +613,23 @@ func (c *TestRedisCache) Delete(ctx context.Context, id string) error {
 	// Delete ID-cache
 	keys := []string{c.Key(TestCacheKeyID, id)}
 
+	// Batch all operations in one transaction
+	pipe := c.Client.TxPipeline()
+
 	// Delete all keys at the same time
-	err = c.Client.Del(ctx, keys...).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.Del(ctx, keys...)
 
 	// Remove from 'set' secondary index: Topic
 	idx = CompoundIndex(o.Topic)
-	c.Client.SRem(ctx, c.Key(TestCacheKeyTopic, idx), o.ID)
-	err = c.Client.Incr(ctx, c.ETagKey(TestCacheKeyTopic, idx)).Err()
-	if err != nil {
-		return common.NewErrorE(http.StatusInternalServerError, err)
-	}
+	pipe.SRem(ctx, c.Key(TestCacheKeyTopic, idx), o.ID)
+	pipe.Incr(ctx, c.ETagKey(TestCacheKeyTopic, idx))
 
 	// Remove from 'set' secondary index: TopicAndSubtopic
 	idx = CompoundIndex(o.Topic, o.Subtopic)
-	c.Client.SRem(ctx, c.Key(TestCacheKeyTopicAndSubtopic, idx), o.ID)
-	err = c.Client.Incr(ctx, c.ETagKey(TestCacheKeyTopicAndSubtopic, idx)).Err()
-	if err != nil {
+	pipe.SRem(ctx, c.Key(TestCacheKeyTopicAndSubtopic, idx), o.ID)
+	pipe.Incr(ctx, c.ETagKey(TestCacheKeyTopicAndSubtopic, idx))
+
+	if _, err := pipe.Exec(ctx); err != nil {
 		return common.NewErrorE(http.StatusInternalServerError, err)
 	}
 

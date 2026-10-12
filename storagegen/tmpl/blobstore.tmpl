@@ -79,7 +79,7 @@ func (s *{{$storeName}}) StoreName() string {
 // Create attempts to store the provided byte blob in store.
 func (s *{{$storeName}}) Create(ctx context.Context, id string, blob models.{{.DbTypeName}}) (*string, error) {
 	if id == "" {
-		id = uuid.NewV4().String()
+		id = uuid.NewString()
 	}
 	if err := s.put(ctx, id, blob); err != nil {
 		return nil, err
