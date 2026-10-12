@@ -119,7 +119,7 @@ func (s *{{$storeName}}) Create(ctx context.Context, obj models.{{.DbTypeName}})
 				Str("ID", obj.{{.IdName}}).Msg("an object with this ID is already stored in the database")
 		}
 	} else {
-		obj.{{.IdName}} = uuid.NewV4().String()
+		obj.{{.IdName}} = uuid.NewString()
 	}
 	if err := s.put(ctx, obj); err != nil {
 		return nil, common.Errorf(err).Msg("could not store new object")
