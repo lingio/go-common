@@ -3,6 +3,7 @@ package common
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -36,18 +37,37 @@ func TestEchoErrorHandler(t *testing.T) {
 
 		c := e.NewContext(req, rec)
 
-		var echoError *echo.HTTPError
-		if errors.As(tc.err, &echoError) {
-			e.DefaultHTTPErrorHandler(echoError, c)
-		} else {
-			e.DefaultHTTPErrorHandler(tc.err, c)
-		}
+		HTTPErrorHandler(e)(tc.err, c)
 
 		if rec.Code != tc.code {
 			t.Errorf("expected http code %v but got %v", tc.code, rec.Code)
 		}
 		if !errors.Is(tc.err, ErrObjectNotFound) { // check that variants satisfy this common pattern
 			t.Errorf("err did not match source ErrObjectNotFound: %v", tc.err)
+		}
+	}
+}
+
+func TestIsHttpError(t *testing.T) {
+	notFound := Errorf(ErrObjectNotFound, "xyz")
+
+	var variants = []struct {
+		err  error
+		code int
+		want bool
+	}{
+		{nil, http.StatusNotFound, false},
+		{ErrObjectNotFound, http.StatusNotFound, false},
+		{notFound, http.StatusNotFound, true},
+		{notFound, http.StatusInternalServerError, false},
+		{fmt.Errorf("wrapped: %w", notFound), http.StatusNotFound, true},
+		{Errorf(notFound, http.StatusOK), http.StatusNotFound, false}, // outermost code wins, as in the handler
+		{echo.NewHTTPError(http.StatusConflict), http.StatusConflict, true},
+	}
+
+	for _, tc := range variants {
+		if got := IsHttpError(tc.err, tc.code); got != tc.want {
+			t.Errorf("IsHttpError(%v, %d) = %v, want %v", tc.err, tc.code, got, tc.want)
 		}
 	}
 }
