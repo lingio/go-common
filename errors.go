@@ -44,6 +44,13 @@ func Errorf(err error, args ...interface{}) (lerr *Error) {
 	return NewError(http.StatusInternalServerError).Msg("unknown error")
 }
 
+// IsHttpError reports whether err would be answered with the given HTTP
+// status code by HTTPErrorHandler, looking through wrapped errors.
+func IsHttpError(err error, code int) bool {
+	var echoError *echo.HTTPError
+	return errors.As(err, &echoError) && echoError.Code == code
+}
+
 // Error describes a traced HTTP error message with contextual details.
 type Error struct {
 	Message        string

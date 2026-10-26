@@ -103,14 +103,7 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 	devopsRequestSkipper := combineSkippers(isMetricRequest, isOpsRequest, isPingRequest)
 
 	// Set up a basic Echo router and its middlewares
-	e.HTTPErrorHandler = func(err error, c echo.Context) {
-		var echoError *echo.HTTPError
-		if errors.As(err, &echoError) {
-			e.DefaultHTTPErrorHandler(echoError, c)
-		} else {
-			e.DefaultHTTPErrorHandler(err, c)
-		}
-	}
+	e.HTTPErrorHandler = HTTPErrorHandler(e)
 
 	e.Use(echomiddleware.RequestID())
 
@@ -176,6 +169,19 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 
 func NewEchoServer(env *Env, swagger *openapi3.T) *echo.Echo {
 	return NewEchoServerWithConfig(env, swagger, DefaultEchoConfig)
+}
+
+// HTTPErrorHandler responds with the status and message of the first
+// echo.HTTPError in err's tree, which for an *Error is its own status code.
+// Errors without one fall back to echo's default 500.
+func HTTPErrorHandler(e *echo.Echo) echo.HTTPErrorHandler {
+	return func(err error, c echo.Context) {
+		var echoError *echo.HTTPError
+		if errors.As(err, &echoError) {
+			err = echoError
+		}
+		e.DefaultHTTPErrorHandler(err, c)
+	}
 }
 
 type GracefulServer interface {
