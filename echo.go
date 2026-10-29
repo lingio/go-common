@@ -145,9 +145,6 @@ func NewEchoServerWithConfig(env *Env, swagger *openapi3.T, config EchoConfig) *
 		// NOTE: Max-Age is constrained by browser implementation, so the actual max age might be less.
 		MaxAge: int((30 * 24 * time.Hour).Seconds()),
 	}))
-	e.Use(echomiddleware.GzipWithConfig(echomiddleware.GzipConfig{
-		Skipper: devopsRequestSkipper,
-	}))
 
 	p.Use(e) // add prometheus /metrics endpoint
 
