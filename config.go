@@ -25,8 +25,15 @@ type RedisConfig struct {
 }
 
 type MonitorConfig struct {
-	TempoHost  string
-	CloudTrace CloudTraceConfig
+	TempoHost string
+	// TempoTLS and TempoAuthorization are for a Tempo behind a public hostname,
+	// like tempo.api-se1.lingio.com from GKE; in-cluster Tempo needs neither.
+	// TempoAuthorization is the Authorization header value. When empty it is
+	// read from the TEMPO_AUTHORIZATION env var, so the secret stays out of
+	// the config files.
+	TempoTLS           bool
+	TempoAuthorization string
+	CloudTrace         CloudTraceConfig
 }
 
 type CloudTraceConfig struct {

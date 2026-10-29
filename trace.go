@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime/debug"
 	"time"
 
@@ -55,7 +56,7 @@ var traceConfigProduction = traceconfig{
 
 func InitMonitoring(env Environment, serviceName string, cfg MonitorConfig) error {
 	if cfg.TempoHost != "" {
-		if err := InitHttpTrace(serviceName, env, cfg.TempoHost); err != nil {
+		if err := InitHttpTrace(serviceName, env, cfg); err != nil {
 			return fmt.Errorf("init trace provider: %w", err)
 		}
 		return nil
@@ -90,7 +91,7 @@ func InitGoogleCloudTrace(ctx context.Context, env Environment, serviceName stri
 	return setupTraceProvider(env, exporter, res)
 }
 
-func InitHttpTrace(serviceName string, env Environment, tempoHost string) error {
+func InitHttpTrace(serviceName string, env Environment, mon MonitorConfig) error {
 	var cfg traceconfig
 
 	// specify environment-dependent options
@@ -103,11 +104,21 @@ func InitHttpTrace(serviceName string, env Environment, tempoHost string) error 
 		cfg = traceConfigProduction
 	}
 
-	client, err := otlptracehttp.New(context.Background(),
-		otlptracehttp.WithEndpoint(tempoHost),
-		otlptracehttp.WithInsecure(),
+	opts := []otlptracehttp.Option{
+		otlptracehttp.WithEndpoint(mon.TempoHost),
 		otlptracehttp.WithRetry(cfg.Retry),
-	)
+	}
+	if !mon.TempoTLS {
+		opts = append(opts, otlptracehttp.WithInsecure())
+	}
+	auth := mon.TempoAuthorization
+	if auth == "" {
+		auth = os.Getenv("TEMPO_AUTHORIZATION")
+	}
+	if auth != "" {
+		opts = append(opts, otlptracehttp.WithHeaders(map[string]string{"Authorization": auth}))
+	}
+	client, err := otlptracehttp.New(context.Background(), opts...)
 	if err != nil {
 		return err
 	}
