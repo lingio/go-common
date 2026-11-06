@@ -125,14 +125,12 @@ func gcpRequestLogger(w http.ResponseWriter) zerolog.Logger {
 			zerolog.Dict().
 				Str("id", w.Header().Get(echo.HeaderXRequestID)),
 		).
-		Timestamp().
 		Logger()
 }
 
 func defaultRequestLog(w http.ResponseWriter) zerolog.Logger {
 	return setupZerologger().With().
 		Str("correlation_id", w.Header().Get(echo.HeaderXRequestID)).
-		Timestamp().
 		Logger()
 
 }
