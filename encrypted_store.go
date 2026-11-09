@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -171,8 +172,9 @@ func (c v1Crypto) decryptFilename(ciphertext string) (string, error) {
 
 func (c v1Crypto) encryptData(nonce, data []byte) []byte {
 	// nonce is not used
-	c.cipher.Encrypt(data, data)
-	return data
+	out := bytes.Clone(data)
+	c.cipher.Encrypt(out, out)
+	return out
 }
 
 func (c v1Crypto) decryptData(data []byte) []byte {
@@ -226,14 +228,12 @@ func (c v2Crypto) encryptData(nonce, data []byte) []byte {
 		}
 	}
 
-	// ciphertext reuses data slice
-	ciphertext := c.aesgcm.Seal(data[:0], nonce, data, nil)
-
-	// nonce||ciphertext
-	var blob []byte
-	blob = append(blob, nonce...)
-	blob = append(blob, ciphertext...)
-	return blob
+	// nonce||ciphertext, sealed into a fresh slice so the caller's data is
+	// left untouched. nonce may share a backing array with data (see
+	// encryptFilename), so it is copied rather than appended to.
+	blob := make([]byte, len(nonce), len(nonce)+len(data)+c.aesgcm.Overhead())
+	copy(blob, nonce)
+	return c.aesgcm.Seal(blob, nonce, data, nil)
 }
 
 func (c v2Crypto) decryptData(data []byte) []byte {
