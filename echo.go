@@ -27,10 +27,6 @@ import (
 	zl "github.com/rs/zerolog/log"
 )
 
-type ErrorStruct struct {
-	Message string `json:"message"`
-}
-
 type EchoConfig struct {
 	BodyLimit echo.MiddlewareFunc
 
@@ -256,12 +252,6 @@ func RespondFile(ctx echo.Context, statusCode int, file []byte, fileName string,
 	}
 	ctx.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s;", fileName))
 	return ctx.Blob(statusCode, contentType, file)
-}
-
-// RespondError is deprecated. Return an error directly in the middleware instead.
-func RespondError(ctx echo.Context, le *Error) error {
-	// returning le directly will busy loop somewhere in echo
-	return Errorf(le)
 }
 
 // unmatchedRouteLabel is the url label for requests that match no route. The
